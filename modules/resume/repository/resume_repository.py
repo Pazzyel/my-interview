@@ -1,10 +1,12 @@
-from typing import Optional, Any
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, insert, desc
-from modules.resume.model.resume_entity import ResumeEntity, ResumeAnalysisResponse
-from infrastructure.database.models import ResumeORM, ResumeAnalysisORM
-from common.models import AsyncTaskStatus
 import json
+from typing import Optional
+
+from sqlalchemy import select, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from infrastructure.database.models import ResumeORM, ResumeAnalysisORM
+from modules.resume.model.resume_entity import ResumeEntity, ResumeAnalysisResponse
+
 
 class ResumeRepository:
     """
@@ -24,21 +26,7 @@ class ResumeRepository:
         orm_obj = result.scalar_one_or_none()
 
         if orm_obj:
-            return ResumeEntity(
-                id=orm_obj.id,
-                fileHash=orm_obj.fileHash,
-                originalFilename=orm_obj.originalFilename,
-                fileSize=orm_obj.fileSize,
-                contentType=orm_obj.contentType,
-                storageKey=orm_obj.storageKey,
-                storageUrl=orm_obj.storageUrl,
-                resumeText=orm_obj.resumeText,
-                uploadedAt=orm_obj.uploadedAt,
-                lastAccessedAt=orm_obj.lastAccessedAt,
-                accessCount=orm_obj.accessCount,
-                analyzeStatus=orm_obj.analyzeStatus,
-                analyzeError=orm_obj.analyzeError
-            )
+            return self.to_resume_entity(orm_obj)
         return None
 
     async def find_by_hash(self, file_hash: str) -> Optional[ResumeEntity]:
@@ -48,40 +36,13 @@ class ResumeRepository:
         orm_obj = result.scalar_one_or_none()
         
         if orm_obj:
-            return ResumeEntity(
-                id=orm_obj.id,
-                fileHash=orm_obj.fileHash,
-                originalFilename=orm_obj.originalFilename,
-                fileSize=orm_obj.fileSize,
-                contentType=orm_obj.contentType,
-                storageKey=orm_obj.storageKey,
-                storageUrl=orm_obj.storageUrl,
-                resumeText=orm_obj.resumeText,
-                uploadedAt=orm_obj.uploadedAt,
-                lastAccessedAt=orm_obj.lastAccessedAt,
-                accessCount=orm_obj.accessCount,
-                analyzeStatus=orm_obj.analyzeStatus,
-                analyzeError=orm_obj.analyzeError
-            )
+            return self.to_resume_entity(orm_obj)
         return None
 
     async def save(self, resume: ResumeEntity) -> ResumeEntity:
         """Insert a new resume record."""
         # Convert pure data model to ORM model
-        new_resume_orm = ResumeORM(
-            fileHash=resume.fileHash,
-            originalFilename=resume.originalFilename,
-            fileSize=resume.fileSize,
-            contentType=resume.contentType,
-            storageKey=resume.storageKey,
-            storageUrl=resume.storageUrl,
-            resumeText=resume.resumeText,
-            uploadedAt=resume.uploadedAt,
-            lastAccessedAt=resume.lastAccessedAt,
-            accessCount=resume.accessCount,
-            analyzeStatus=resume.analyzeStatus,
-            analyzeError=resume.analyzeError
-        )
+        new_resume_orm = self.to_resume_orm(resume)
         
         self.db.add(new_resume_orm)
         await self.db.flush() # Flush to get the generated ID
@@ -117,4 +78,37 @@ class ResumeRepository:
             summary=orm_obj.summary,
             strengths=strengths,
             suggestions=suggestions
+        )
+
+    def to_resume_entity(self, orm_obj: ResumeORM) -> ResumeEntity:
+        return ResumeEntity(
+            id=orm_obj.id,
+            fileHash=orm_obj.fileHash,
+            originalFilename=orm_obj.originalFilename,
+            fileSize=orm_obj.fileSize,
+            contentType=orm_obj.contentType,
+            storageKey=orm_obj.storageKey,
+            storageUrl=orm_obj.storageUrl,
+            resumeText=orm_obj.resumeText,
+            uploadedAt=orm_obj.uploadedAt,
+            lastAccessedAt=orm_obj.lastAccessedAt,
+            accessCount=orm_obj.accessCount,
+            analyzeStatus=orm_obj.analyzeStatus,
+            analyzeError=orm_obj.analyzeError
+        )
+
+    def to_resume_orm(self, resume: ResumeEntity) -> ResumeORM:
+        return ResumeORM(
+            fileHash=resume.fileHash,
+            originalFilename=resume.originalFilename,
+            fileSize=resume.fileSize,
+            contentType=resume.contentType,
+            storageKey=resume.storageKey,
+            storageUrl=resume.storageUrl,
+            resumeText=resume.resumeText,
+            uploadedAt=resume.uploadedAt,
+            lastAccessedAt=resume.lastAccessedAt,
+            accessCount=resume.accessCount,
+            analyzeStatus=resume.analyzeStatus,
+            analyzeError=resume.analyzeError
         )
