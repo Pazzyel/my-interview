@@ -21,9 +21,9 @@ class FileStorageService:
         )
         self.bucket_name = app_config.rustfs_bucket_name
 
-    async def upload_resume(self, file: UploadFile) -> str:
+    async def upload_file_to_rustfs(self, file: UploadFile) -> str:
         """
-        上传简历到RustFS，返回为其生成的文件key
+        上传文件到RustFS，返回为其生成的文件key
 
         Upload resume to RustFS, returns fileKey
         """
@@ -62,3 +62,18 @@ class FileStorageService:
             return url
         except ClientError as e:
             raise Exception(f"Failed to generate URL for file: {str(e)}")
+
+    def download_file(self, file_key: str) -> bytes:
+        """
+        从RustFS下载文件内容。
+
+        Download file content from RustFS by key.
+        """
+        try:
+            response = self.s3_client.get_object(
+                Bucket=self.bucket_name,
+                Key=file_key,
+            )
+            return response["Body"].read()
+        except ClientError as e:
+            raise Exception(f"Failed to download file from RustFS: {str(e)}")

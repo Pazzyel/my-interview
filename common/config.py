@@ -27,6 +27,19 @@ class AppConfigProperties(BaseSettings):
     # document parse config
     MAX_PARSE_TIME: float = 60.0 # 最大的文档解析时间是60s
 
+    # Knowledge Base config
+    kb_vectorize_topic: str = "kb-vectorize-topic"
+    kb_vectorize_tag: str = "vectorize"
+    kb_allowed_types: list[str] = [
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "text/plain",
+        "text/markdown",
+    ]
+    kb_max_file_size_bytes: int = 50 * 1024 * 1024  # 50MB
+    rustfs_kb_bucket_name: str = "knowledgebases"
+
     class Config:
         env_file = ".env"
 

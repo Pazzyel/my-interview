@@ -3,6 +3,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from modules.resume.router import resume_router
+from modules.knowledgebase.router import knowledgebase_router
 from common.exceptions import BusinessException
 
 logging.basicConfig(level=logging.INFO)
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Resume Analysis Service Migration", version="1.0")
 
 app.include_router(resume_router.router)
+app.include_router(knowledgebase_router.router)
 
 @app.exception_handler(BusinessException)
 async def business_exception_handler(request: Request, exc: BusinessException):
