@@ -3,7 +3,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import TypeVar, Generic, Dict, Any, Optional
 
-from kafka import KafkaProducer
+from rocketmq.client import Producer, Message
 
 from common.config import app_config
 
@@ -14,43 +14,43 @@ T = TypeVar("T")
 
 class AbstractMessageProducer(ABC, Generic[T]):
     """
-    Kafka 消息生产者模板基类。
+    RocketMQ 消息生产者模板基类。
     统一消息发送骨架与失败处理逻辑。
     """
 
     def __init__(self) -> None:
-        self._producer = KafkaProducer(
-            bootstrap_servers=app_config.kafka_bootstrap_servers,
-            value_serializer=lambda v: json.dumps(v, ensure_ascii=False).encode("utf-8"),
-            key_serializer=lambda k: k.encode("utf-8") if k else None,
-        )
+        self._producer = Producer(app_config.rocketmq_producer_group)
+        self._producer.set_name_server_address(app_config.rocketmq_name_server)
+        self._producer.start()
         logger.info(
-            "Kafka Producer started: bootstrap_servers=%s",
-            app_config.kafka_bootstrap_servers,
+            "RocketMQ Producer started: name_server=%s, group=%s",
+            app_config.rocketmq_name_server,
+            app_config.rocketmq_producer_group,
         )
 
     # ────────── 模板方法：发送任务 ──────────
 
     def send_task(self, payload: T) -> None:
         """
-        发送任务消息到 Kafka（模板方法）。
+        发送任务消息到 RocketMQ（模板方法）。
         子类调用本方法，由基类完成序列化 → 发送 → 异常处理。
         """
         try:
+            body = json.dumps(self.build_message(payload), ensure_ascii=False).encode("utf-8")
 
-            future = self._producer.send(
-                topic=self.topic(),
-                key=self.payload_identifier(payload),
-                value=self.build_message(payload),
-            )
-            record_metadata = future.get(timeout=10)
+            msg = Message(self.topic())
+            msg.set_keys(self.payload_identifier(payload))
+            msg.set_tags(self.tag())
+            msg.set_body(body)
+
+            send_result = self._producer.send_sync(msg)
 
             logger.info(
-                "%s 任务已发送到 Kafka: topic=%s, partition=%s, offset=%s, %s",
+                "%s 任务已发送到 RocketMQ: topic=%s, msg_id=%s, status=%s, %s",
                 self.task_display_name(),
-                record_metadata.topic,
-                record_metadata.partition,
-                record_metadata.offset,
+                self.topic(),
+                send_result.msg_id,
+                send_result.status,
                 self.payload_identifier(payload),
             )
         except Exception as e:
@@ -74,8 +74,8 @@ class AbstractMessageProducer(ABC, Generic[T]):
 
     def shutdown(self) -> None:
         """关闭生产者，释放资源。"""
-        self._producer.close()
-        logger.info("Kafka Producer closed.")
+        self._producer.shutdown()
+        logger.info("RocketMQ Producer closed.")
 
     # ────────── 子类必须实现的抽象方法 ──────────
 
@@ -86,12 +86,12 @@ class AbstractMessageProducer(ABC, Generic[T]):
 
     @abstractmethod
     def topic(self) -> str:
-        """Kafka Topic。"""
+        """RocketMQ Topic。"""
         ...
 
     @abstractmethod
     def tag(self) -> str:
-        """消息标签，写入 Kafka Header，用于消费端过滤。"""
+        """RocketMQ Tag，用于消费端过滤。"""
         ...
 
     @abstractmethod

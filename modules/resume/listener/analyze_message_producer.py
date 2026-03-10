@@ -21,7 +21,7 @@ class AnalyzeTaskPayload:
 class AnalyzeMessageProducer(AbstractMessageProducer[AnalyzeTaskPayload]):
     """
     简历分析任务生产者。
-    负责发送分析任务到 Kafka。
+    负责发送分析任务到 RocketMQ。
     """
 
     def __init__(self, resume_repository: ResumeRepository) -> None:
@@ -32,7 +32,7 @@ class AnalyzeMessageProducer(AbstractMessageProducer[AnalyzeTaskPayload]):
 
     def send_analyze_task(self, resume_id: int, content: str) -> None:
         """
-        发送简历分析任务到 Kafka。
+        发送简历分析任务到 RocketMQ。
 
         :param resume_id: 简历 ID
         :param content:   简历文本内容
