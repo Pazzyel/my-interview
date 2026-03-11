@@ -8,13 +8,12 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from common.config import app_config
 from common.exceptions import BusinessException, ErrorCode
 from infrastructure.vector.vector_store import vector_store
+from common.ai_config import ai_config
 
 logger = logging.getLogger(__name__)
 
+MAX_BATCH_SIZE = ai_config.MAX_BATCH_SIZE
 tokenizer = tiktoken.get_encoding(app_config.tokenizer_name)
-
-# 嵌入模型 API 批量大小限制
-MAX_BATCH_SIZE = 10
 
 def token_length_function(content: str) -> int:
     """
@@ -79,6 +78,79 @@ class KnowledgeBaseVectorService:
         except Exception as e:
             logger.error("向量化知识库失败: kb_id=%s, error=%s", kb_id, str(e))
             raise BusinessException(ErrorCode.KB_VECTORIZE_ERROR, "向量化知识库失败", str(e))
+
+    def similar_search(self, query: str, knowledgebase_ids: List[int], top_k: int, min_score: float) -> List[Document]:
+        """
+        基于多个知识库进行相似度搜索。
+
+        :param query: 查询文本
+        :param knowledgebase_ids: 知识库 ID 列表（为空则搜索所有）
+        :param top_k: 返回 top K 个结果
+        :param min_score: 最低相似度阈值
+        :return: 相关文档列表
+        """
+        logger.info(
+            "向量相似度搜索: query=%s, kb_ids=%s, top_k=%s, min_score=%s",
+            query, knowledgebase_ids, top_k, min_score,
+        )
+
+        try:
+            # 构建 ES 前置过滤条件
+            pre_filter = self._build_kb_filter(knowledgebase_ids) if knowledgebase_ids else None
+
+            # 使用 ElasticsearchStore 的 similarity_search_with_score 进行搜索
+            results_with_score = vector_store.similarity_search_with_score(
+                query=query,
+                k=max(top_k, 1),
+                filter=pre_filter,
+            )
+
+            # 按 min_score 过滤（score 越高越相似）
+            results = [doc for doc, score in results_with_score if score >= min_score]
+
+            logger.info("搜索完成: 找到 %s 个相关文档", len(results))
+            return results
+
+        except Exception as e:
+            logger.warning("向量搜索前置过滤失败，回退到本地过滤: %s", str(e))
+            return self._similar_search_fallback(query, knowledgebase_ids, top_k, min_score)
+
+    def _similar_search_fallback(
+        self, query: str, knowledgebase_ids: List[int], top_k: int, min_score: float
+    ) -> List[Document]:
+        """
+        回退搜索：不使用 ES 前置过滤，改为本地过滤 kb_id。
+        """
+        try:
+            results_with_score = vector_store.similarity_search_with_score(
+                query=query,
+                k=max(top_k * 3, top_k),
+            )
+
+            # 按 min_score 过滤
+            results = [doc for doc, score in results_with_score if score >= min_score]
+
+            # 按 kb_id 本地过滤
+            if knowledgebase_ids:
+                kb_id_strs = {str(kid) for kid in knowledgebase_ids}
+                results = [doc for doc in results if doc.metadata.get("kb_id") in kb_id_strs]
+
+            results = results[:top_k]
+            logger.info("回退检索完成: 找到 %s 个相关文档", len(results))
+            return results
+
+        except Exception as e:
+            logger.error("向量搜索失败: %s", str(e))
+            raise BusinessException(ErrorCode.KB_VECTORIZE_ERROR, "向量搜索失败", str(e))
+
+    @staticmethod
+    def _build_kb_filter(knowledgebase_ids: List[int]) -> list:
+        """
+        构建 ES metadata 过滤条件，按 kb_id 过滤。
+        返回 langchain_elasticsearch 所需的 filter 格式。
+        """
+        kb_id_strs = [str(kid) for kid in knowledgebase_ids if kid is not None]
+        return [{"terms": {"metadata.kb_id.keyword": kb_id_strs}}]
 
     def delete_knowledgebase_by_id(self, knowledgebase_id: int) -> None:
         """

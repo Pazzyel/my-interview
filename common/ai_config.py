@@ -9,5 +9,7 @@ class AIConfigProperties:
         model=embeddings_model_name,
         api_key=os.environ["OPENAI_API_KEY"],
     )
+    # 嵌入模型 API 批量大小限制
+    MAX_BATCH_SIZE = 10
 
 ai_config = AIConfigProperties()

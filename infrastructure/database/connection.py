@@ -1,3 +1,5 @@
+from typing import AsyncGenerator
+
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from common.config import app_config
@@ -14,7 +16,7 @@ async_session_factory = async_sessionmaker(
     engine, expire_on_commit=False, class_=AsyncSession
 )
 
-async def get_async_session() -> AsyncSession: # type: ignore
+async def get_async_session() -> AsyncGenerator[AsyncSession]: # type: ignore
     """
     Dependency to provide a database session
     """
