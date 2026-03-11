@@ -101,7 +101,7 @@ class KnowledgeBaseUploadService:
         # 7. 发送向量化任务到 RocketMQ（异步处理）
         if saved_kb.id is None:
             raise BusinessException(ErrorCode.VALIDATION_ERROR, "保存的知识库没有id")
-        self.vectorize_stream_producer.send_vectorize_task(saved_kb.id, content)
+        self.vectorize_stream_producer.send_vectorize_task(saved_kb.id,saved_kb.name, saved_kb.category, content)
 
         logger.info("知识库上传完成，向量化任务已入队: %s, kb_id=%s", file_name, saved_kb.id)
 
@@ -149,6 +149,6 @@ class KnowledgeBaseUploadService:
         await self.persistence_service.update_vector_status_to_pending(kb_id)
 
         # 3. 发送向量化任务到 MQ
-        self.vectorize_stream_producer.send_vectorize_task(kb_id, content)
+        self.vectorize_stream_producer.send_vectorize_task(existing_kb.id,existing_kb.name, existing_kb.category, content)
 
         logger.info("重新向量化任务已发送: kb_id=%s", kb_id)

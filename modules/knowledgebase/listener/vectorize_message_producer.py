@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 class VectorizeTaskPayload:
     """向量化任务载荷"""
     kb_id: int
+    kb_name: str
+    kb_category: str
     content: str
 
 
@@ -30,14 +32,14 @@ class VectorizeMessageProducer(AbstractMessageProducer[VectorizeTaskPayload]):
 
     # ────────── 公开 API ──────────
 
-    def send_vectorize_task(self, kb_id: int, content: str) -> None:
+    def send_vectorize_task(self, kb_id: int,kb_name: str, kb_category: str, content: str) -> None:
         """
         发送向量化任务到 RocketMQ。
 
         :param kb_id:   知识库 ID
         :param content: 文档文本内容
         """
-        self.send_task(VectorizeTaskPayload(kb_id=kb_id, content=content))
+        self.send_task(VectorizeTaskPayload(kb_id=kb_id, kb_name=kb_name, kb_category=kb_category, content=content))
 
     # ────────── 抽象方法实现 ──────────
 

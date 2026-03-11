@@ -5,6 +5,7 @@ from infrastructure.file.document_parse_service import DocumentParseService
 from infrastructure.file.file_hash_service import FileHashService
 from infrastructure.file.file_storage_service import FileStorageService
 from infrastructure.file.file_validation_service import FileValidationService
+from modules.knowledgebase.service.knowledgebase_vector_service import KnowledgeBaseVectorService
 from modules.resume.listener.analyze_message_producer import AnalyzeMessageProducer
 from modules.resume.repository.resume_repository import ResumeRepository
 from modules.resume.service.resume_parse_service import ResumeParseService
@@ -103,4 +104,7 @@ def get_knowledgebase_upload_service(
         file_hash_service,
         vectorize_stream_producer,
     )
+
+def get_knowledgebase_vector_service():
+    return KnowledgeBaseVectorService()
 

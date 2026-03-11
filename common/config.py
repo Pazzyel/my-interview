@@ -40,6 +40,14 @@ class AppConfigProperties(BaseSettings):
     kb_max_file_size_bytes: int = 50 * 1024 * 1024  # 50MB
     rustfs_kb_bucket_name: str = "knowledgebases"
 
+    # Tokenizer
+    tokenizer_name: str = "cl100k_base"
+
+    # ElasticSearch
+    elasticsearch_url: str = "http://localhost:9200"
+    elasticsearch_index_name: str = "smart_service"
+    elasticsearch_query_mode: str = "dense_vector"
+
     class Config:
         env_file = ".env"
 
