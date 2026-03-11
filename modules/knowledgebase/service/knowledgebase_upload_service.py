@@ -89,7 +89,7 @@ class KnowledgeBaseUploadService:
             raise BusinessException(ErrorCode.SYSTEM_ERROR, "无法从文件中提取文本内容，请确保文件格式正确")
 
         # 5. 保存文件到RustFS
-        file_key: str = await self.storage_service.upload_file_to_rustfs(file)
+        file_key: str = await self.storage_service.upload_knowledgebase(file)
         file_url: str = self.storage_service.get_file_url(file_key)
         logger.info("知识库已存储到RustFS: %s", file_key)
 

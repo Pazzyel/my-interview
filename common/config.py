@@ -22,7 +22,7 @@ class AppConfigProperties(BaseSettings):
     rustfs_access_key: str = "minioadmin"
     rustfs_secret_key: str = "minioadmin"
     rustfs_region_name: str = "us-east-1"
-    rustfs_bucket_name: str = "resumes"
+    rustfs_bucket_name: str = "resources"
 
     # document parse config
     MAX_PARSE_TIME: float = 60.0 # 最大的文档解析时间是60s
