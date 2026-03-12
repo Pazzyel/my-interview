@@ -108,3 +108,30 @@ def get_knowledgebase_upload_service(
 def get_knowledgebase_vector_service():
     return KnowledgeBaseVectorService()
 
+from modules.knowledgebase.repository.rag_chat_repository import RagChatRepository
+from modules.knowledgebase.service.knowledgebase_list_service import KnowledgeBaseListService
+from modules.knowledgebase.service.knowledgebase_count_service import KnowledgeBaseCountService
+from modules.knowledgebase.service.knowledgebase_delete_service import KnowledgeBaseDeleteService
+
+def get_rag_chat_repository(db: AsyncSession = Depends(get_async_session)):
+    return RagChatRepository(db=db)
+
+def get_knowledgebase_list_service(
+    knowledgebase_repository: KnowledgeBaseRepository = Depends(get_knowledgebase_repository),
+    rag_chat_repository: RagChatRepository = Depends(get_rag_chat_repository),
+    storage_service: FileStorageService = Depends(get_file_storage_service)
+):
+    return KnowledgeBaseListService(knowledgebase_repository, rag_chat_repository, storage_service)
+
+def get_knowledgebase_count_service(
+    knowledgebase_repository: KnowledgeBaseRepository = Depends(get_knowledgebase_repository)
+):
+    return KnowledgeBaseCountService(knowledgebase_repository)
+
+def get_knowledgebase_delete_service(
+    knowledgebase_repository: KnowledgeBaseRepository = Depends(get_knowledgebase_repository),
+    rag_chat_repository: RagChatRepository = Depends(get_rag_chat_repository),
+    vector_service: KnowledgeBaseVectorService = Depends(get_knowledgebase_vector_service),
+    storage_service: FileStorageService = Depends(get_file_storage_service)
+):
+    return KnowledgeBaseDeleteService(knowledgebase_repository, rag_chat_repository, vector_service, storage_service)

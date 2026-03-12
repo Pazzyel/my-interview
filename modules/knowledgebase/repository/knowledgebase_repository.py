@@ -1,7 +1,7 @@
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, delete, func, or_
 
 from modules.knowledgebase.model.knowledgebase_entity import KnowledgeBaseEntity, VectorStatus
 from infrastructure.database.models import KnowledgeBaseORM
@@ -94,6 +94,116 @@ class KnowledgeBaseRepository:
                 last_accessed_at=datetime.now(),
             )
         )
+        await self.db.execute(stmt)
+        await self.db.commit()
+
+    # ==================== List Queries (列表查询) ====================
+
+    async def find_all_ordered_by_uploaded_at_desc(self) -> List[KnowledgeBaseEntity]:
+        """按上传时间倒序查找所有知识库 / Find all knowledge bases ordered by upload time descending"""
+        stmt = select(KnowledgeBaseORM).order_by(KnowledgeBaseORM.uploaded_at.desc())
+        result = await self.db.execute(stmt)
+        return [self._to_entity(r) for r in result.scalars().all()]
+
+    async def find_by_vector_status_ordered(self, status: VectorStatus) -> List[KnowledgeBaseEntity]:
+        """按向量化状态查找知识库（按上传时间倒序） / Find by vector status ordered by upload time descending"""
+        stmt = (
+            select(KnowledgeBaseORM)
+            .where(KnowledgeBaseORM.vector_status == status)
+            .order_by(KnowledgeBaseORM.uploaded_at.desc())
+        )
+        result = await self.db.execute(stmt)
+        return [self._to_entity(r) for r in result.scalars().all()]
+
+    async def find_all_categories(self) -> List[str]:
+        """获取所有不同的分类 / Get all distinct categories"""
+        stmt = (
+            select(KnowledgeBaseORM.category)
+            .where(KnowledgeBaseORM.category.isnot(None))
+            .distinct()
+            .order_by(KnowledgeBaseORM.category)
+        )
+        result = await self.db.execute(stmt)
+        return [r for r in result.scalars().all() if r]
+
+    async def find_by_category_ordered(self, category: Optional[str]) -> List[KnowledgeBaseEntity]:
+        """根据分类查找知识库 / Find knowledge bases by category"""
+        stmt = select(KnowledgeBaseORM)
+        if category:
+            stmt = stmt.where(KnowledgeBaseORM.category == category)
+        else:
+            stmt = stmt.where(KnowledgeBaseORM.category.is_(None))
+            
+        stmt = stmt.order_by(KnowledgeBaseORM.uploaded_at.desc())
+        result = await self.db.execute(stmt)
+        return [self._to_entity(r) for r in result.scalars().all()]
+
+    async def search_by_keyword(self, keyword: str) -> List[KnowledgeBaseEntity]:
+        """按名称或文件名模糊搜索 / Search by keyword in name or original_filename"""
+        like_expr = f"%{keyword}%"
+        stmt = (
+            select(KnowledgeBaseORM)
+            .where(
+                or_(
+                    KnowledgeBaseORM.name.ilike(like_expr),
+                    KnowledgeBaseORM.original_filename.ilike(like_expr)
+                )
+            )
+            .order_by(KnowledgeBaseORM.uploaded_at.desc())
+        )
+        result = await self.db.execute(stmt)
+        return [self._to_entity(r) for r in result.scalars().all()]
+
+    # ==================== Batch Operations (批量操作) ====================
+
+    async def increment_question_count_batch(self, ids: List[int]) -> int:
+        """
+        批量增加知识库提问计数
+        Batch increment question count for given IDs
+        """
+        if not ids:
+            return 0
+            
+        stmt = (
+            update(KnowledgeBaseORM)
+            .where(KnowledgeBaseORM.id.in_(ids))
+            .values(question_count=KnowledgeBaseORM.question_count + 1)
+        )
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+        return result.rowcount
+
+    # ==================== Stats Queries (统计查询) ====================
+
+    async def count_total(self) -> int:
+        """统计总知识库数量"""
+        stmt = select(func.count()).select_from(KnowledgeBaseORM)
+        result = await self.db.execute(stmt)
+        return result.scalar() or 0
+
+    async def sum_question_count(self) -> int:
+        """统计总提问次数"""
+        stmt = select(func.sum(KnowledgeBaseORM.question_count))
+        result = await self.db.execute(stmt)
+        return result.scalar() or 0
+
+    async def sum_access_count(self) -> int:
+        """统计总访问次数"""
+        stmt = select(func.sum(KnowledgeBaseORM.access_count))
+        result = await self.db.execute(stmt)
+        return result.scalar() or 0
+
+    async def count_by_vector_status(self, status: VectorStatus) -> int:
+        """按向量化状态统计数量"""
+        stmt = select(func.count()).select_from(KnowledgeBaseORM).where(KnowledgeBaseORM.vector_status == status)
+        result = await self.db.execute(stmt)
+        return result.scalar() or 0
+
+    # ==================== Delete (删除) ====================
+
+    async def delete_by_id(self, kb_id: int) -> None:
+        """删除知识库记录 / Delete knowledge base record"""
+        stmt = delete(KnowledgeBaseORM).where(KnowledgeBaseORM.id == kb_id)
         await self.db.execute(stmt)
         await self.db.commit()
 
