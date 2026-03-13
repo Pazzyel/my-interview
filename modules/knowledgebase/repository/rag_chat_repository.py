@@ -76,7 +76,6 @@ class RagChatRepository:
         """保存会话 (包含更新关联) / Save session and its relationships"""
 
         db.add(to_session_orm(session))
-        await db.commit()
         return session
 
     async def count_messages_by_type(self, db: AsyncSession, msg_type: str) -> int:

@@ -98,5 +98,6 @@ class AnalyzeMessageProducer(AbstractMessageProducer[AnalyzeTaskPayload]):
                     if error is not None:
                         resume.analyzeError = error[:500] if len(error) > 500 else error
                     await self._resume_repository.save(db, resume)
+                await db.commit()
         except Exception as e:
             logger.error("更新分析状态失败: resumeId=%s, error=%s", resume_id, str(e))

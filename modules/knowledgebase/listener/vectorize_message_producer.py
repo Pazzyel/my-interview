@@ -90,5 +90,6 @@ class VectorizeMessageProducer(AbstractMessageProducer[VectorizeTaskPayload]):
             )
             async with async_session_factory() as db:
                 await self._knowledge_base_repository.update_vector_status(db, kb_id, status, error)
+                await db.commit()
         except Exception as e:
             logger.error("更新向量化状态失败: kb_id=%s, error=%s", kb_id, str(e))

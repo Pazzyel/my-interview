@@ -46,7 +46,6 @@ class ResumeRepository:
         
         db.add(new_resume_orm)
         await db.flush() # Flush to get the generated ID
-        await db.commit()
         
         resume.id = new_resume_orm.id
         return resume

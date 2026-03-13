@@ -108,7 +108,6 @@ class KnowledgeBaseRepository:
 
         db.add(new_orm)
         await db.flush()  # 获取自增ID
-        await db.commit()
 
         entity.id = new_orm.id
         return entity
@@ -123,12 +122,10 @@ class KnowledgeBaseRepository:
             .values(vector_status=status, vector_error=error)
         )
         await db.execute(stmt)
-        await db.commit()
 
     async def update_category(self, db: AsyncSession, kb_id: int, category: str) -> None:
         stmt = update(KnowledgeBaseORM).where(KnowledgeBaseORM.id == kb_id).values(category=category)
         result = await db.execute(stmt)
-        await db.commit()
         if result.rowcount == 0: # type: ignore
             raise BusinessException(ErrorCode.KB_NOT_FOUND, "未找到该id对应知识库")
 
@@ -149,7 +146,6 @@ class KnowledgeBaseRepository:
             )
         )
         await db.execute(stmt)
-        await db.commit()
 
     # ==================== List Queries (列表查询) ====================
 
@@ -224,7 +220,6 @@ class KnowledgeBaseRepository:
             .values(question_count=KnowledgeBaseORM.question_count + 1)
         )
         result = await db.execute(stmt)
-        await db.commit()
         return result.rowcount # type: ignore
 
     # ==================== Stats Queries (统计查询) ====================
@@ -261,4 +256,3 @@ class KnowledgeBaseRepository:
         """删除知识库记录 / Delete knowledge base record"""
         stmt = delete(KnowledgeBaseORM).where(KnowledgeBaseORM.id == kb_id)
         await db.execute(stmt)
-        await db.commit()
