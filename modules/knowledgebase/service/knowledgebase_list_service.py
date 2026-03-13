@@ -4,6 +4,7 @@ from typing import List, Optional
 from common.exceptions import BusinessException, ErrorCode
 from modules.knowledgebase.model.knowledgebase_entity import KnowledgeBaseEntity, VectorStatus
 from modules.knowledgebase.model.knowledgebase_dto import KnowledgeBaseListItemDTO, KnowledgeBaseStatsDTO
+from modules.knowledgebase.model.rag_chat_message_entity import MessageType
 from modules.knowledgebase.repository.knowledgebase_repository import KnowledgeBaseRepository
 from modules.knowledgebase.repository.rag_chat_repository import RagChatRepository
 from infrastructure.file.file_storage_service import FileStorageService
@@ -65,30 +66,11 @@ class KnowledgeBaseListService:
 
     async def update_category(self, kb_id: int, category: Optional[str]) -> None:
         """更新知识库分类 / Update knowledge base category"""
-        entity = await self.knowledgebase_repository.find_by_id(kb_id)
-        if not entity:
-            raise BusinessException(ErrorCode.NOT_FOUND, "知识库不存在 / Knowledge base not found")
-            
-        entity.category = category if category and category.strip() else None
-        
-        # Save requires an update. Our save() method just adds, so we would need an update method
-        # Actually the repository's `save` currently uses `db.add()`, which for detached entities
-        # or updates might need `merge()`. We can do a direct SQL update for category
-        # However, to save time, since we use pure entities, the proper layered approach
-        # would be an update method in repo. For now we use the existing update status or just
-        # construct an update statement inline, but ideally update in repo. Let's add simple logic here.
-        # But wait, python's service handles this. We shouldn't inline SQL in service. Let's assume
-        # `knowledgebase_repository.update_category` exists or add it. Wait, I will use a direct wrapper if needed.
-        logger.info(f"The `update_category` method needs a repository method. Doing a mock for now, will add repo update.")
-        
-        from sqlalchemy import update
-        from infrastructure.database.models import KnowledgeBaseORM
-        
-        stmt = update(KnowledgeBaseORM).where(KnowledgeBaseORM.id == kb_id).values(category=entity.category)
-        await self.knowledgebase_repository.db.execute(stmt)
-        await self.knowledgebase_repository.db.commit()
-        
-        logger.info(f"更新知识库分类: id={kb_id}, category={category}")
+        if category is None:
+            return
+
+        await self.knowledgebase_repository.update_category(kb_id, category)
+
 
     # ========== 搜索功能 / Search Features ==========
 
@@ -108,17 +90,17 @@ class KnowledgeBaseListService:
         总提问次数从用户消息数统计，确保多知识库提问只算一次
         """
         total_count = await self.knowledgebase_repository.count_total()
-        total_questions = await self.rag_chat_repository.count_messages_by_type("USER")
+        total_questions = await self.rag_chat_repository.count_messages_by_type(MessageType.USER.value)
         total_access = await self.knowledgebase_repository.sum_access_count()
         completed_vectors = await self.knowledgebase_repository.count_by_vector_status(VectorStatus.COMPLETED)
         processing_vectors = await self.knowledgebase_repository.count_by_vector_status(VectorStatus.PROCESSING)
 
         return KnowledgeBaseStatsDTO(
-            total_count=total_count,
-            total_questions=total_questions,
-            total_access=total_access,
-            completed_vectors=completed_vectors,
-            processing_vectors=processing_vectors
+            totalCount=total_count,
+            totalQuestions=total_questions,
+            totalAccess=total_access,
+            completedVectors=completed_vectors,
+            processingVectors=processing_vectors
         )
 
     # ========== 下载功能 / Download Features ==========
@@ -138,19 +120,9 @@ class KnowledgeBaseListService:
             raise BusinessException(ErrorCode.SYSTEM_ERROR, "文件存储信息不存在 / File storage info not found")
 
         logger.info(f"下载知识库文件: id={kb_id}, filename={entity.original_filename}")
-        # Note: Depending on file_storage implementation, this might be sync or async.
-        # Let's assume async or we just await it.
-        try:
-            content = await self.file_storage_service.download_file(entity.storage_key)
-            return content
-        except Exception as e:
-             # It might be sync in some setups. Let's make it robust.
-             # If download_file is not async, this will break. Let's assume standard async.
-             content = await self.file_storage_service._download_file(entity.storage_key) # just placeholders
-             pass # Actually, the error might be object not callable simply. Will check if it crashes.
-             
-        # Fallback to standard
-        return self.file_storage_service.download_file(entity.storage_key) # Usually synchronous wrapper over boto3
+
+        content = self.file_storage_service.download_file(entity.storage_key)
+        return content
 
     # ========== 内部辅助方法 / Internal Helpers ==========
 
@@ -171,11 +143,11 @@ class KnowledgeBaseListService:
             id=entity.id,
             name=entity.name,
             category=entity.category,
-            original_filename=entity.original_filename,
-            file_size=entity.file_size,
-            uploaded_at=entity.uploaded_at,
-            access_count=entity.access_count,
-            question_count=entity.question_count,
-            vector_status=entity.vector_status,
-            vector_error=entity.vector_error,
+            originalFilename=entity.original_filename,
+            fileSize=entity.file_size,
+            uploadedAt=entity.uploaded_at,
+            accessCount=entity.access_count,
+            questionCount=entity.question_count,
+            vectorStatus=entity.vector_status,
+            vectorError=entity.vector_error,
         )

@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel, Field
 from modules.knowledgebase.model.knowledgebase_entity import VectorStatus
@@ -38,4 +38,3 @@ class KnowledgeBaseStatsDTO(BaseModel):
 
     class Config:
         populate_by_name = True
-

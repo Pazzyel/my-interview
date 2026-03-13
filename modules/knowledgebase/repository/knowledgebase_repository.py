@@ -1,11 +1,56 @@
 from typing import Optional, List
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, func, or_
+from sqlalchemy.engine import Result
+from sqlalchemy import select, update, delete, func, or_, CursorResult
+import logging
 
+from common.exceptions import BusinessException, ErrorCode
 from modules.knowledgebase.model.knowledgebase_entity import KnowledgeBaseEntity, VectorStatus
 from infrastructure.database.models import KnowledgeBaseORM
 
+
+def _to_entity(orm: KnowledgeBaseORM) -> KnowledgeBaseEntity:
+    """将 ORM 对象转换为纯数据模型"""
+    return KnowledgeBaseEntity(
+        id=orm.id,
+        file_hash=orm.file_hash,
+        name=orm.name,
+        category=orm.category,
+        original_filename=orm.original_filename,
+        file_size=orm.file_size,
+        content_type=orm.content_type,
+        storage_key=orm.storage_key,
+        storage_url=orm.storage_url,
+        uploaded_at=orm.uploaded_at,
+        last_accessed_at=orm.last_accessed_at,
+        access_count=orm.access_count,
+        question_count=orm.question_count,
+        vector_status=orm.vector_status,
+        vector_error=orm.vector_error,
+        chunk_count=orm.chunk_count,
+    )
+
+def _to_orm(entity: KnowledgeBaseEntity) -> KnowledgeBaseORM:
+    """将entity 转换为orm对象"""
+    return KnowledgeBaseORM(
+        id=entity.id,
+        file_hash=entity.file_hash,
+        name=entity.name,
+        category=entity.category,
+        original_filename=entity.original_filename,
+        file_size=entity.file_size,
+        content_type=entity.content_type,
+        storage_key=entity.storage_key,
+        storage_url=entity.storage_url,
+        uploaded_at=entity.uploaded_at,
+        last_accessed_at=entity.last_accessed_at,
+        access_count=entity.access_count,
+        question_count=entity.question_count,
+        vector_status=entity.vector_status,
+        vector_error=entity.vector_error,
+        chunk_count=entity.chunk_count,
+    )
 
 class KnowledgeBaseRepository:
     """
@@ -24,7 +69,7 @@ class KnowledgeBaseRepository:
         orm_obj: Optional[KnowledgeBaseORM] = result.scalar_one_or_none()
 
         if orm_obj:
-            return self._to_entity(orm_obj)
+            return _to_entity(orm_obj)
         return None
 
     async def find_by_file_hash(self, file_hash: str) -> Optional[KnowledgeBaseEntity]:
@@ -34,7 +79,7 @@ class KnowledgeBaseRepository:
         orm_obj: Optional[KnowledgeBaseORM] = result.scalar_one_or_none()
 
         if orm_obj:
-            return self._to_entity(orm_obj)
+            return _to_entity(orm_obj)
         return None
 
     async def save(self, entity: KnowledgeBaseEntity) -> KnowledgeBaseEntity:
@@ -80,6 +125,15 @@ class KnowledgeBaseRepository:
         await self.db.execute(stmt)
         await self.db.commit()
 
+    async def update_category(self, kb_id: int, category: str) -> None:
+        stmt = update(KnowledgeBaseORM).where(KnowledgeBaseORM.id == kb_id).values(category=category)
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+        if result.rowcount == 0: # type: ignore
+            raise BusinessException(ErrorCode.KB_NOT_FOUND, "未找到该id对应知识库")
+
+        logging.info(f"更新知识库分类: id={kb_id}, category={category}")
+
     async def increment_access_count(self, kb_id: int) -> None:
         """
         增加访问计数并更新最后访问时间。
@@ -103,7 +157,7 @@ class KnowledgeBaseRepository:
         """按上传时间倒序查找所有知识库 / Find all knowledge bases ordered by upload time descending"""
         stmt = select(KnowledgeBaseORM).order_by(KnowledgeBaseORM.uploaded_at.desc())
         result = await self.db.execute(stmt)
-        return [self._to_entity(r) for r in result.scalars().all()]
+        return [_to_entity(r) for r in result.scalars().all()]
 
     async def find_by_vector_status_ordered(self, status: VectorStatus) -> List[KnowledgeBaseEntity]:
         """按向量化状态查找知识库（按上传时间倒序） / Find by vector status ordered by upload time descending"""
@@ -113,7 +167,7 @@ class KnowledgeBaseRepository:
             .order_by(KnowledgeBaseORM.uploaded_at.desc())
         )
         result = await self.db.execute(stmt)
-        return [self._to_entity(r) for r in result.scalars().all()]
+        return [_to_entity(r) for r in result.scalars().all()]
 
     async def find_all_categories(self) -> List[str]:
         """获取所有不同的分类 / Get all distinct categories"""
@@ -136,7 +190,7 @@ class KnowledgeBaseRepository:
             
         stmt = stmt.order_by(KnowledgeBaseORM.uploaded_at.desc())
         result = await self.db.execute(stmt)
-        return [self._to_entity(r) for r in result.scalars().all()]
+        return [_to_entity(r) for r in result.scalars().all()]
 
     async def search_by_keyword(self, keyword: str) -> List[KnowledgeBaseEntity]:
         """按名称或文件名模糊搜索 / Search by keyword in name or original_filename"""
@@ -152,7 +206,7 @@ class KnowledgeBaseRepository:
             .order_by(KnowledgeBaseORM.uploaded_at.desc())
         )
         result = await self.db.execute(stmt)
-        return [self._to_entity(r) for r in result.scalars().all()]
+        return [_to_entity(r) for r in result.scalars().all()]
 
     # ==================== Batch Operations (批量操作) ====================
 
@@ -171,7 +225,7 @@ class KnowledgeBaseRepository:
         )
         result = await self.db.execute(stmt)
         await self.db.commit()
-        return result.rowcount
+        return result.rowcount # type: ignore
 
     # ==================== Stats Queries (统计查询) ====================
 
@@ -181,6 +235,8 @@ class KnowledgeBaseRepository:
         result = await self.db.execute(stmt)
         return result.scalar() or 0
 
+    # 因为一个提问可能涉及多个知识库，会给这些知识库的计数都+1，所以用这个不准（会更多）
+    # 正确方法是从RagChat那边统计，这个方法没有使用
     async def sum_question_count(self) -> int:
         """统计总提问次数"""
         stmt = select(func.sum(KnowledgeBaseORM.question_count))
@@ -206,24 +262,3 @@ class KnowledgeBaseRepository:
         stmt = delete(KnowledgeBaseORM).where(KnowledgeBaseORM.id == kb_id)
         await self.db.execute(stmt)
         await self.db.commit()
-
-    def _to_entity(self, orm: KnowledgeBaseORM) -> KnowledgeBaseEntity:
-        """将 ORM 对象转换为纯数据模型"""
-        return KnowledgeBaseEntity(
-            id=orm.id,
-            file_hash=orm.file_hash,
-            name=orm.name,
-            category=orm.category,
-            original_filename=orm.original_filename,
-            file_size=orm.file_size,
-            content_type=orm.content_type,
-            storage_key=orm.storage_key,
-            storage_url=orm.storage_url,
-            uploaded_at=orm.uploaded_at,
-            last_accessed_at=orm.last_accessed_at,
-            access_count=orm.access_count,
-            question_count=orm.question_count,
-            vector_status=orm.vector_status,
-            vector_error=orm.vector_error,
-            chunk_count=orm.chunk_count,
-        )

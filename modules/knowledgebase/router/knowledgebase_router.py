@@ -1,10 +1,23 @@
 import logging
 from fastapi import APIRouter, File, UploadFile, Depends, Form
 from typing import Dict, Any, Optional
+from pydantic import BaseModel
+from typing import List
+from fastapi import Query
 
+from common.exceptions import BusinessException
 from common.models import Result
 from modules.knowledgebase.service.knowledgebase_upload_service import KnowledgeBaseUploadService
 from common.dependencies import get_knowledgebase_upload_service
+from modules.knowledgebase.model.knowledgebase_entity import VectorStatus
+from modules.knowledgebase.model.knowledgebase_dto import KnowledgeBaseListItemDTO, KnowledgeBaseStatsDTO
+from common.dependencies import (
+    get_knowledgebase_list_service,
+    get_knowledgebase_delete_service,
+)
+from modules.knowledgebase.service.knowledgebase_list_service import KnowledgeBaseListService
+from modules.knowledgebase.service.knowledgebase_delete_service import KnowledgeBaseDeleteService
+from fastapi.responses import Response
 
 logger = logging.getLogger(__name__)
 
@@ -46,34 +59,21 @@ async def revectorize(
     await upload_service.revectorize(kb_id)
     return Result.success(data=None)
 
-from pydantic import BaseModel
-from typing import List
-from fastapi import Query
-from modules.knowledgebase.model.knowledgebase_entity import VectorStatus
-from modules.knowledgebase.model.knowledgebase_dto import KnowledgeBaseListItemDTO, KnowledgeBaseStatsDTO
-from common.dependencies import (
-    get_knowledgebase_list_service,
-    get_knowledgebase_delete_service,
-)
-from modules.knowledgebase.service.knowledgebase_list_service import KnowledgeBaseListService
-from modules.knowledgebase.service.knowledgebase_delete_service import KnowledgeBaseDeleteService
-from fastapi.responses import Response
-
 @router.get("/list", response_model=Result[List[KnowledgeBaseListItemDTO]])
 async def get_all_knowledge_bases(
-    sortBy: Optional[str] = Query(None),
-    vectorStatus: Optional[str] = Query(None),
+    sort_by: Optional[str] = Query(None),
+    vector_status: Optional[str] = Query(None),
     list_service: KnowledgeBaseListService = Depends(get_knowledgebase_list_service)
 ):
     """获取所有知识库列表 / Get all knowledge bases"""
     status_enum = None
-    if vectorStatus:
+    if vector_status:
         try:
-            status_enum = VectorStatus(vectorStatus.upper())
+            status_enum = VectorStatus(vector_status.upper())
         except ValueError:
-            return Result.error(message=f"无效的向量化状态 / Invalid vector status: {vectorStatus}")
+            return Result.error(message=f"无效的向量化状态 / Invalid vector status: {vector_status}")
             
-    items = await list_service.list_knowledge_bases(status_enum, sortBy)
+    items = await list_service.list_knowledge_bases(status_enum, sort_by)
     return Result.success(data=items)
 
 @router.get("/categories", response_model=Result[List[str]])
