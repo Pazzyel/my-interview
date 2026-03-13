@@ -3,8 +3,8 @@ from fastapi import APIRouter, File, UploadFile, Depends
 from typing import Dict, Any
 
 from common.models import Result
-from modules.resume.service.resume_upload_service import ResumeUploadService
-from common.dependencies import get_resume_upload_service
+from common.dependencies import resume_upload_service, get_async_session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/resumes", tags=["Resume"])
 @router.post("/upload")
 async def upload_and_analyze(
     file: UploadFile = File(...),
-    upload_service: ResumeUploadService = Depends(get_resume_upload_service)
+    db: AsyncSession = Depends(get_async_session)
 ) -> Result[Dict[str, Any]]:
     """
     上传简历并分析
@@ -22,7 +22,7 @@ async def upload_and_analyze(
     Upload a resume file and trigger analysis.
     """
     logger.info("Uploading resume...")
-    result_data = await upload_service.upload_and_analyze(file)
+    result_data = await resume_upload_service.upload_and_analyze(db, file)
     
     is_duplicate = result_data.get("duplicate", False)
     if is_duplicate:

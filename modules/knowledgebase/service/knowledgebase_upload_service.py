@@ -2,6 +2,7 @@ import logging
 from typing import Dict, Any, Optional
 
 from fastapi import UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.config import app_config
 from common.exceptions import BusinessException, ErrorCode
@@ -44,6 +45,7 @@ class KnowledgeBaseUploadService:
 
     async def upload_knowledge_base(
         self,
+        db: AsyncSession,
         file: UploadFile,
         name: Optional[str] = None,
         category: Optional[str] = None,
@@ -78,10 +80,10 @@ class KnowledgeBaseUploadService:
 
         # 3. 检查知识库是否已存在（去重）
         file_hash: str = await self.file_hash_service.calculate_hash_file(file)
-        existing_kb: Optional[KnowledgeBaseEntity] = await self.knowledge_base_repository.find_by_file_hash(file_hash)
+        existing_kb: Optional[KnowledgeBaseEntity] = await self.knowledge_base_repository.find_by_file_hash(db, file_hash)
         if existing_kb is not None:
             logger.info("检测到重复知识库: hash=%s", file_hash)
-            return await self.persistence_service.handle_duplicate_knowledge_base(existing_kb, file_hash)
+            return await self.persistence_service.handle_duplicate_knowledge_base(db, existing_kb, file_hash)
 
         # 4. 解析知识库文本（用于后续向量化）
         content: str = await self.parse_service.parse_content(file)
@@ -95,7 +97,7 @@ class KnowledgeBaseUploadService:
 
         # 6. 保存知识库元数据到数据库（状态为 PENDING）
         saved_kb: KnowledgeBaseEntity = await self.persistence_service.save_knowledge_base(
-            file, name, category, file_key, file_url, file_hash
+            db, file, name, category, file_key, file_url, file_hash
         )
 
         # 7. 发送向量化任务到 RocketMQ（异步处理）
@@ -122,14 +124,14 @@ class KnowledgeBaseUploadService:
             "duplicate": False,
         }
 
-    async def revectorize(self, kb_id: int) -> None:
+    async def revectorize(self, db: AsyncSession, kb_id: int) -> None:
         """
         重新向量化知识库（手动重试）。
 
         Re-download the file from RustFS, re-parse, and resend
         the vectorize task to the message queue.
         """
-        existing_kb: Optional[KnowledgeBaseEntity] = await self.knowledge_base_repository.find_by_id(kb_id)
+        existing_kb: Optional[KnowledgeBaseEntity] = await self.knowledge_base_repository.find_by_id(db, kb_id)
         if existing_kb is None:
             raise BusinessException(ErrorCode.SYSTEM_ERROR, "知识库不存在")
 
@@ -146,7 +148,7 @@ class KnowledgeBaseUploadService:
             raise BusinessException(ErrorCode.SYSTEM_ERROR, "无法从文件中提取文本内容")
 
         # 2. 更新状态为 PENDING
-        await self.persistence_service.update_vector_status_to_pending(kb_id)
+        await self.persistence_service.update_vector_status_to_pending(db, kb_id)
 
         # 3. 发送向量化任务到 MQ
         self.vectorize_stream_producer.send_vectorize_task(existing_kb.id,existing_kb.name, existing_kb.category, content)

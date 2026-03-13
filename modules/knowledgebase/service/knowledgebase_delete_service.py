@@ -1,5 +1,6 @@
 import logging
 from typing import List
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.exceptions import BusinessException, ErrorCode
 from modules.knowledgebase.model.knowledgebase_entity import KnowledgeBaseEntity
@@ -30,7 +31,7 @@ class KnowledgeBaseDeleteService:
         self.vector_service = vector_service
         self.storage_service = storage_service
 
-    async def delete_knowledge_base(self, kb_id: int) -> None:
+    async def delete_knowledge_base(self, db: AsyncSession, kb_id: int) -> None:
         """
         删除知识库
         包括：RAG会话关联、向量数据、RustFS文件、数据库记录
@@ -39,16 +40,16 @@ class KnowledgeBaseDeleteService:
         Includes: RAG session associations, vector data, RustFS file, and database record.
         """
         # 1. 获取知识库信息 / Get knowledge base info
-        kb: KnowledgeBaseEntity | None = await self.knowledgebase_repository.find_by_id(kb_id)
+        kb: KnowledgeBaseEntity | None = await self.knowledgebase_repository.find_by_id(db, kb_id)
         if not kb:
             raise BusinessException(ErrorCode.NOT_FOUND, "知识库不存在 / Knowledge base not found")
 
         # 2. 删除所有RAG会话中的知识库关联 / Remove relation in RAG sessions
-        sessions = await self.rag_chat_repository.find_sessions_by_knowledge_base_ids([kb_id])
+        sessions = await self.rag_chat_repository.find_sessions_by_knowledge_base_ids(db, [kb_id])
         for session in sessions:
             # 去除该kb_id的关联
             session.knowledge_bases = [k for k in session.knowledge_bases if k.id != kb_id]
-            await self.rag_chat_repository.save_session(session)
+            await self.rag_chat_repository.save_session(db, session)
             logger.debug(f"已从会话中移除知识库关联: sessionId={session.id}, kbId={kb_id}")
 
         if sessions:
@@ -69,5 +70,5 @@ class KnowledgeBaseDeleteService:
                 logger.warning(f"删除RustFS文件失败，继续删除知识库记录: kbId={kb_id}, error={str(e)}")
 
         # 5. 删除知识库记录 / Delete knowledge base record
-        await self.knowledgebase_repository.delete_by_id(kb_id)
+        await self.knowledgebase_repository.delete_by_id(db, kb_id)
         logger.info(f"知识库已删除: id={kb_id}")

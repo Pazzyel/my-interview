@@ -7,6 +7,7 @@ from common.async_task.abstract_message_producer import AbstractMessageProducer
 from common.config import app_config
 from modules.knowledgebase.model.knowledgebase_entity import VectorStatus
 from modules.knowledgebase.repository.knowledgebase_repository import KnowledgeBaseRepository
+from infrastructure.database.connection import async_session_factory
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,7 @@ class VectorizeMessageProducer(AbstractMessageProducer[VectorizeTaskPayload]):
                 "向量化任务发送失败，更新状态: kb_id=%s, status=%s, error=%s",
                 kb_id, status.value, error,
             )
-            await self._knowledge_base_repository.update_vector_status(kb_id, status, error)
+            async with async_session_factory() as db:
+                await self._knowledge_base_repository.update_vector_status(db, kb_id, status, error)
         except Exception as e:
             logger.error("更新向量化状态失败: kb_id=%s, error=%s", kb_id, str(e))

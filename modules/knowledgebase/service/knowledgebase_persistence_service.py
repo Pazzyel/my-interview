@@ -2,6 +2,7 @@ import logging
 from typing import Dict, Any, Optional
 
 from fastapi import UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.exceptions import BusinessException, ErrorCode
 from modules.knowledgebase.model.knowledgebase_entity import KnowledgeBaseEntity, VectorStatus
@@ -21,7 +22,7 @@ class KnowledgeBasePersistenceService:
         self.knowledge_base_repository: KnowledgeBaseRepository = knowledge_base_repository
 
     async def handle_duplicate_knowledge_base(
-        self, kb: KnowledgeBaseEntity, file_hash: str
+        self, db: AsyncSession, kb: KnowledgeBaseEntity, file_hash: str
     ) -> Dict[str, Any]:
         """
         处理重复知识库（更新访问计数，返回已有记录）。
@@ -33,7 +34,7 @@ class KnowledgeBasePersistenceService:
 
         # 更新访问计数
         if kb.id is not None:
-            await self.knowledge_base_repository.increment_access_count(kb.id)
+            await self.knowledge_base_repository.increment_access_count(db, kb.id)
 
         return {
             "knowledgeBase": {
@@ -51,6 +52,7 @@ class KnowledgeBasePersistenceService:
 
     async def save_knowledge_base(
         self,
+        db: AsyncSession,
         file: UploadFile,
         name: Optional[str],
         category: Optional[str],
@@ -80,7 +82,7 @@ class KnowledgeBasePersistenceService:
                 storage_url=storage_url,
             )
 
-            saved_kb: KnowledgeBaseEntity = await self.knowledge_base_repository.save(kb)
+            saved_kb: KnowledgeBaseEntity = await self.knowledge_base_repository.save(db, kb)
             logger.info(
                 "知识库已保存: id=%s, name=%s, category=%s, hash=%s",
                 saved_kb.id, saved_kb.name, saved_kb.category, file_hash,
@@ -90,17 +92,17 @@ class KnowledgeBasePersistenceService:
             logger.error("保存知识库失败: %s", str(e), exc_info=True)
             raise BusinessException(ErrorCode.SYSTEM_ERROR, "保存知识库失败")
 
-    async def update_vector_status_to_pending(self, kb_id: int) -> None:
+    async def update_vector_status_to_pending(self, db: AsyncSession, kb_id: int) -> None:
         """
         更新知识库向量化状态为 PENDING（用于重新向量化）。
 
         Reset vector status to PENDING for re-vectorization.
         """
-        existing_kb: Optional[KnowledgeBaseEntity] = await self.knowledge_base_repository.find_by_id(kb_id)
+        existing_kb: Optional[KnowledgeBaseEntity] = await self.knowledge_base_repository.find_by_id(db, kb_id)
         if existing_kb is None:
             raise BusinessException(ErrorCode.SYSTEM_ERROR, "知识库不存在")
 
-        await self.knowledge_base_repository.update_vector_status(kb_id, VectorStatus.PENDING, None)
+        await self.knowledge_base_repository.update_vector_status(db, kb_id, VectorStatus.PENDING, None)
         logger.info("知识库向量化状态已更新为 PENDING: kb_id=%s", kb_id)
 
     def _extract_name_from_filename(self, filename: Optional[str]) -> str:

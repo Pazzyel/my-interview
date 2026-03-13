@@ -7,6 +7,7 @@ from common.async_task.abstract_message_producer import AbstractMessageProducer
 from common.config import app_config
 from common.models import AsyncTaskStatus
 from modules.resume.repository.resume_repository import ResumeRepository
+from infrastructure.database.connection import async_session_factory
 
 logger = logging.getLogger(__name__)
 
@@ -90,11 +91,12 @@ class AnalyzeMessageProducer(AbstractMessageProducer[AnalyzeTaskPayload]):
                 error,
             )
             # DB 更新状态为错误
-            resume = await self._resume_repository.find_by_id(resume_id)
-            if resume is not None:
-                resume.analyzeStatus = status
-                if error is not None:
-                    resume.analyzeError = error[:500] if len(error) > 500 else error
-                await self._resume_repository.save(resume)
+            async with async_session_factory() as db:
+                resume = await self._resume_repository.find_by_id(db, resume_id)
+                if resume is not None:
+                    resume.analyzeStatus = status
+                    if error is not None:
+                        resume.analyzeError = error[:500] if len(error) > 500 else error
+                    await self._resume_repository.save(db, resume)
         except Exception as e:
             logger.error("更新分析状态失败: resumeId=%s, error=%s", resume_id, str(e))

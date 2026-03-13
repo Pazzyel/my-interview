@@ -1,5 +1,6 @@
 import logging
 from typing import List, Optional
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.exceptions import BusinessException, ErrorCode
 from modules.knowledgebase.model.knowledgebase_entity import KnowledgeBaseEntity, VectorStatus
@@ -18,7 +19,7 @@ class KnowledgeBaseCountService:
     def __init__(self, knowledgebase_repository: KnowledgeBaseRepository):
         self.knowledgebase_repository = knowledgebase_repository
 
-    async def update_question_counts(self, knowledge_base_ids: List[int]) -> None:
+    async def update_question_counts(self, db: AsyncSession, knowledge_base_ids: List[int]) -> None:
         """
         批量更新知识库提问计数
         每个知识库的 question_count +1，表示该知识库参与回答的次数
@@ -35,7 +36,7 @@ class KnowledgeBaseCountService:
         # 验证所有知识库是否存在 / Validate if all knowledge bases exist
         # 实际实现中，这里为了优化可以仅验证，但在高并发下，直接更新也可以。
         # 这里仅作简单校验
-        updated_count = await self.knowledgebase_repository.increment_question_count_batch(unique_ids)
+        updated_count = await self.knowledgebase_repository.increment_question_count_batch(db, unique_ids)
         
         if updated_count < len(unique_ids):
             logger.warning(f"部分知识库不存在或未更新成功: 请求更新数量={len(unique_ids)}, 实际更新数量={updated_count}")

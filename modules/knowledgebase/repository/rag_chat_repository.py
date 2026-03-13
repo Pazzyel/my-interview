@@ -53,10 +53,10 @@ class RagChatRepository:
     
     Repository for RagChatSession and RagChatMessage operations.
     """
-    def __init__(self, db: AsyncSession):
-        self.db: AsyncSession = db
+    def __init__(self):
+        pass
 
-    async def find_sessions_by_knowledge_base_ids(self, kb_ids: List[int]) -> list[RagChatSessionEntity]:
+    async def find_sessions_by_knowledge_base_ids(self, db: AsyncSession, kb_ids: List[int]) -> list[RagChatSessionEntity]:
         """
         根据知识库ID列表查找相关的会话。
         Find sessions related to a list of knowledge base IDs.
@@ -69,23 +69,23 @@ class RagChatRepository:
             select(RagChatSessionORM)
             .filter(RagChatSessionORM.knowledge_bases.any(KnowledgeBaseORM.id.in_(kb_ids)))
         )
-        result = await self.db.execute(stmt)
+        result = await db.execute(stmt)
         return [to_session_entity(orm) for orm in result.scalars().all()]
     
-    async def save_session(self, session: RagChatSessionEntity) -> RagChatSessionEntity:
+    async def save_session(self, db: AsyncSession, session: RagChatSessionEntity) -> RagChatSessionEntity:
         """保存会话 (包含更新关联) / Save session and its relationships"""
 
-        self.db.add(to_session_orm(session))
-        await self.db.commit()
+        db.add(to_session_orm(session))
+        await db.commit()
         return session
 
-    async def count_messages_by_type(self, msg_type: str) -> int:
+    async def count_messages_by_type(self, db: AsyncSession, msg_type: str) -> int:
         """
         统计指定类型的消息数量 (如 'USER', 'ASSISTANT')。
         Count messages by their exact type.
         """
         stmt = select(func.count()).select_from(RagChatMessageORM).where(RagChatMessageORM.type == msg_type)
-        result = await self.db.execute(stmt)
+        result = await db.execute(stmt)
         count: int = result.scalar() or 0
         return count
 

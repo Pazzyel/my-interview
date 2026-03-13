@@ -2,6 +2,7 @@ import logging
 from typing import Dict, Any
 
 from fastapi import UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.config import app_config
 from common.exceptions import BusinessException, ErrorCode
@@ -32,7 +33,7 @@ class ResumeUploadService:
         self.analyze_stream_producer = analyze_stream_producer
         self.resume_repository = resume_repository
 
-    async def upload_and_analyze(self, file: UploadFile) -> Dict[str, Any]:
+    async def upload_and_analyze(self, db: AsyncSession, file: UploadFile) -> Dict[str, Any]:
         """
         上传分析文件逻辑
         Main logic for uploading and analyzing logic (async part streamed to workers)
@@ -57,9 +58,9 @@ class ResumeUploadService:
         # Hash for deduplication
         file_hash = await self.file_hash_service.calculate_hash_file(file)
         # 如果有重复文件，不用保存，增加一次计数
-        existing_resume = await self.resume_repository.find_by_hash(file_hash)
+        existing_resume = await self.resume_repository.find_by_hash(db, file_hash)
         if existing_resume:
-            return await self.handle_duplicate_resume(existing_resume)
+            return await self.handle_duplicate_resume(db, existing_resume)
 
         # unstructured解析文件的文本内容
         # Parse Text
@@ -86,7 +87,7 @@ class ResumeUploadService:
             resumeText=resume_text
         )
         
-        saved_resume = await self.resume_repository.save(new_resume)
+        saved_resume = await self.resume_repository.save(db, new_resume)
 
         # 发送文本AI分析异步任务到MQ
         # Publish Task
@@ -110,12 +111,12 @@ class ResumeUploadService:
             "duplicate": False
         }
 
-    async def handle_duplicate_resume(self, resume: ResumeEntity) -> Dict[str, Any]:
+    async def handle_duplicate_resume(self, db: AsyncSession, resume: ResumeEntity) -> Dict[str, Any]:
         logger.info(f"Duplicate resume detected, returning history analysis result: resumeId={resume.id}")
         
         if not resume.id:
             raise BusinessException(ErrorCode.VALIDATION_ERROR, "查找出的简历文件没有id") 
-        analysis = await self.resume_repository.get_latest_analysis_as_dto(resume.id)
+        analysis = await self.resume_repository.get_latest_analysis_as_dto(db, resume.id)
         
         # 有分析就返回分析的字典
         if analysis:

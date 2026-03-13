@@ -16,42 +16,42 @@ class ResumeRepository:
     Uses an injected async database session.
     Converts strictly between ORM entities and pure Data models.
     """
-    def __init__(self, db: AsyncSession):
-        self.db = db
+    def __init__(self):
+        pass
 
-    async def find_by_id(self, resume_id: int) -> Optional[ResumeEntity]:
+    async def find_by_id(self, db: AsyncSession, resume_id: int) -> Optional[ResumeEntity]:
         """Find a resume by ID."""
         stmt = select(ResumeORM).where(ResumeORM.id == resume_id)
-        result = await self.db.execute(stmt)
+        result = await db.execute(stmt)
         orm_obj = result.scalar_one_or_none()
 
         if orm_obj:
             return self.to_resume_entity(orm_obj)
         return None
 
-    async def find_by_hash(self, file_hash: str) -> Optional[ResumeEntity]:
+    async def find_by_hash(self, db: AsyncSession, file_hash: str) -> Optional[ResumeEntity]:
         """Find an existing resume by file hash."""
         stmt = select(ResumeORM).where(ResumeORM.fileHash == file_hash)
-        result = await self.db.execute(stmt)
+        result = await db.execute(stmt)
         orm_obj = result.scalar_one_or_none()
         
         if orm_obj:
             return self.to_resume_entity(orm_obj)
         return None
 
-    async def save(self, resume: ResumeEntity) -> ResumeEntity:
+    async def save(self, db: AsyncSession, resume: ResumeEntity) -> ResumeEntity:
         """Insert a new resume record."""
         # Convert pure data model to ORM model
         new_resume_orm = self.to_resume_orm(resume)
         
-        self.db.add(new_resume_orm)
-        await self.db.flush() # Flush to get the generated ID
-        await self.db.commit()
+        db.add(new_resume_orm)
+        await db.flush() # Flush to get the generated ID
+        await db.commit()
         
         resume.id = new_resume_orm.id
         return resume
 
-    async def get_latest_analysis_as_dto(self, resume_id: int) -> Optional[ResumeAnalysisResponse]:
+    async def get_latest_analysis_as_dto(self, db: AsyncSession, resume_id: int) -> Optional[ResumeAnalysisResponse]:
         """Fetch the latest analysis for a given resume ID."""
         stmt = (
             select(ResumeAnalysisORM)
@@ -59,7 +59,7 @@ class ResumeRepository:
             .order_by(desc(ResumeAnalysisORM.analyzedAt))
             .limit(1)
         )
-        result = await self.db.execute(stmt)
+        result = await db.execute(stmt)
         orm_obj = result.scalar_one_or_none()
         
         if not orm_obj:
