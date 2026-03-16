@@ -3,7 +3,8 @@ from fastapi import APIRouter, File, UploadFile, Depends
 from typing import Dict, Any
 
 from common.models import Result
-from common.dependencies import resume_upload_service, get_async_session
+from common.dependencies import resume_upload_service
+from infrastructure.database.connection import get_async_session
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)

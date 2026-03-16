@@ -7,16 +7,19 @@ from fastapi import Query
 
 from common.exceptions import BusinessException
 from common.models import Result
+from infrastructure.model.BaseCamelSchema import BaseCamelSchema
 from modules.knowledgebase.model.knowledgebase_entity import VectorStatus
 from modules.knowledgebase.model.knowledgebase_dto import KnowledgeBaseListItemDTO, KnowledgeBaseStatsDTO
 from common.dependencies import (
     knowledgebase_upload_service,
     knowledgebase_list_service,
-    knowledgebase_delete_service,
+    knowledgebase_delete_service, knowledgebase_query_service,
 )
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from common.dependencies import get_async_session
+from infrastructure.database.connection import get_async_session
+from modules.knowledgebase.model.query_request import QueryRequest
+from modules.knowledgebase.model.query_response import QueryResponse
 
 logger = logging.getLogger(__name__)
 
@@ -60,19 +63,19 @@ async def revectorize(
 
 @router.get("/list", response_model=Result[List[KnowledgeBaseListItemDTO]])
 async def get_all_knowledge_bases(
-    sort_by: Optional[str] = Query(None),
-    vector_status: Optional[str] = Query(None),
+    sortBy: Optional[str] = Query(None),
+    vectorStatus: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_async_session),
 ):
     """获取所有知识库列表 / Get all knowledge bases"""
     status_enum = None
-    if vector_status:
+    if vectorStatus:
         try:
-            status_enum = VectorStatus(vector_status.upper())
+            status_enum = VectorStatus(vectorStatus.upper())
         except ValueError:
-            return Result.error(message=f"无效的向量化状态 / Invalid vector status: {vector_status}")
+            return Result.error(message=f"无效的向量化状态 / Invalid vector status: {vectorStatus}")
             
-    items = await knowledgebase_list_service.list_knowledge_bases(db, status_enum, sort_by)
+    items = await knowledgebase_list_service.list_knowledge_bases(db, status_enum, sortBy)
     return Result.success(data=items)
 
 @router.get("/categories", response_model=Result[List[str]])
@@ -100,7 +103,7 @@ async def get_uncategorized(
     items = await knowledgebase_list_service.list_by_category(db, None)
     return Result.success(data=items)
 
-class CategoryUpdateReq(BaseModel):
+class CategoryUpdateReq(BaseCamelSchema):
     category: str
 
 @router.put("/{kb_id}/category", response_model=Result[None])
@@ -174,3 +177,11 @@ async def delete_knowledge_base(
     await knowledgebase_delete_service.delete_knowledge_base(db, kb_id)
     return Result.success(data=None)
 
+@router.post("/query", response_model=Result[QueryResponse])
+async def query_knowledge_base(
+    request: QueryRequest,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """基于知识库回答问题（支持多知识库）"""
+    data: QueryResponse = await knowledgebase_query_service.query_knowledge_base(db, request)
+    return Result.success(data=data)

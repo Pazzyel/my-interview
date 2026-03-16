@@ -13,6 +13,7 @@ from modules.knowledgebase.service.knowledgebase_parse_service import KnowledgeB
 from modules.knowledgebase.service.knowledgebase_persistence_service import KnowledgeBasePersistenceService
 from modules.knowledgebase.service.knowledgebase_upload_service import KnowledgeBaseUploadService
 from modules.knowledgebase.service.knowledgebase_vector_service import KnowledgeBaseVectorService
+from modules.knowledgebase.service.knowledgebase_query_service import KnowledgeBaseQueryService
 from modules.resume.listener.analyze_message_producer import AnalyzeMessageProducer
 from modules.resume.repository.resume_repository import ResumeRepository
 from modules.resume.service.resume_parse_service import ResumeParseService
@@ -67,3 +68,4 @@ knowledgebase_count_service = KnowledgeBaseCountService(knowledgebase_repository
 knowledgebase_delete_service = KnowledgeBaseDeleteService(
     knowledgebase_repository, rag_chat_repository, knowledgebase_vector_service, file_storage_service
 )
+knowledgebase_query_service = KnowledgeBaseQueryService(knowledgebase_list_service)

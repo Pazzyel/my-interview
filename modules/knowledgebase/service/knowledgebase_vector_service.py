@@ -33,7 +33,7 @@ class KnowledgeBaseVectorService:
         )
 
 
-    def vectorize_and_store(self, kb_id: int, kb_name: str, kb_category: str, content: str) -> None:
+    async def vectorize_and_store(self, kb_id: int, kb_name: str, kb_category: str, content: str) -> None:
         """
         向量化知识库并存储到 Elasticsearch。
         """
@@ -66,7 +66,7 @@ class KnowledgeBaseVectorService:
                 end = min(start + MAX_BATCH_SIZE, total_chunks)
                 batch = documents[start:end]
                 logger.debug("处理第 %s/%s 批: chunks %s-%s", i + 1, batch_count, start + 1, end)
-                vector_store.add_documents(batch)
+                await vector_store.aadd_documents(batch)
 
             logger.info(
                 "知识库向量化完成: kb_id=%s, chunks=%s, batches=%s",
@@ -79,7 +79,7 @@ class KnowledgeBaseVectorService:
             logger.error("向量化知识库失败: kb_id=%s, error=%s", kb_id, str(e))
             raise BusinessException(ErrorCode.KB_VECTORIZE_ERROR, "向量化知识库失败", str(e))
 
-    def similar_search(self, query: str, knowledgebase_ids: List[int], top_k: int, min_score: float) -> List[Document]:
+    async def similar_search(self, query: str, knowledgebase_ids: List[int], top_k: int, min_score: float) -> List[Document]:
         """
         基于多个知识库进行相似度搜索。
 
@@ -99,7 +99,7 @@ class KnowledgeBaseVectorService:
             pre_filter = self._build_kb_filter(knowledgebase_ids) if knowledgebase_ids else None
 
             # 使用 ElasticsearchStore 的 similarity_search_with_score 进行搜索
-            results_with_score = vector_store.similarity_search_with_score(
+            results_with_score = await vector_store.asimilarity_search_with_score(
                 query=query,
                 k=max(top_k, 1),
                 filter=pre_filter,
@@ -113,16 +113,16 @@ class KnowledgeBaseVectorService:
 
         except Exception as e:
             logger.warning("向量搜索前置过滤失败，回退到本地过滤: %s", str(e))
-            return self._similar_search_fallback(query, knowledgebase_ids, top_k, min_score)
+            return await self._similar_search_fallback(query, knowledgebase_ids, top_k, min_score)
 
-    def _similar_search_fallback(
+    async def _similar_search_fallback(
         self, query: str, knowledgebase_ids: List[int], top_k: int, min_score: float
     ) -> List[Document]:
         """
         回退搜索：不使用 ES 前置过滤，改为本地过滤 kb_id。
         """
         try:
-            results_with_score = vector_store.similarity_search_with_score(
+            results_with_score = await vector_store.asimilarity_search_with_score(
                 query=query,
                 k=max(top_k * 3, top_k),
             )

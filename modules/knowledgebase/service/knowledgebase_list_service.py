@@ -55,6 +55,17 @@ class KnowledgeBaseListService:
             return self._to_list_item_dto(entity)
         return None
 
+    async def get_knowledge_base_names(self, db: AsyncSession, ids: List[int]) -> List[str]:
+        """根据ID列表获取知识库名称列表"""
+        names: List[str] = []
+        for kb_id in ids:
+            name: Optional[str] = await self.knowledgebase_repository.find_by_id(db, kb_id)
+            if name:
+                names.append(name)
+            else:
+                names.append("未知知识库")
+        return names
+
     # ========== 分类管理 / Category Management ==========
 
     async def get_all_categories(self, db: AsyncSession) -> List[str]:

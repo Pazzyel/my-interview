@@ -1,9 +1,11 @@
 from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel, Field
+
+from infrastructure.model.BaseCamelSchema import BaseCamelSchema
 from modules.knowledgebase.model.knowledgebase_entity import VectorStatus
 
-class KnowledgeBaseListItemDTO(BaseModel):
+class KnowledgeBaseListItemDTO(BaseCamelSchema):
     """
     知识库列表项数据传输对象
 
@@ -20,11 +22,9 @@ class KnowledgeBaseListItemDTO(BaseModel):
     vector_status: VectorStatus = Field(default=VectorStatus.PENDING, alias="vectorStatus", description="向量化状态 / Vectorization status")
     vector_error: Optional[str] = Field(default=None, alias="vectorError", description="向量化异常信息 / Vectorization error message")
 
-    class Config:
-        populate_by_name = True
 
 
-class KnowledgeBaseStatsDTO(BaseModel):
+class KnowledgeBaseStatsDTO(BaseCamelSchema):
     """
     知识库统计信息数据传输对象
 
@@ -36,5 +36,3 @@ class KnowledgeBaseStatsDTO(BaseModel):
     completed_vectors: int = Field(..., alias="completedVectors", description="已完成向量化的知识库数量 / Completed vectorizations count")
     processing_vectors: int = Field(..., alias="processingVectors", description="正在处理向量化的知识库数量 / Processing vectorizations count")
 
-    class Config:
-        populate_by_name = True
