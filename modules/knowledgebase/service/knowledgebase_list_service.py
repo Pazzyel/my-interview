@@ -134,7 +134,7 @@ class KnowledgeBaseListService:
 
         logger.info(f"下载知识库文件: id={kb_id}, filename={entity.original_filename}")
 
-        content = self.file_storage_service.download_file(entity.storage_key)
+        content = await self.file_storage_service.download_file(entity.storage_key)
         return content
 
     # ========== 内部辅助方法 / Internal Helpers ==========

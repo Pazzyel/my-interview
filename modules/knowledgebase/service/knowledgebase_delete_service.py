@@ -65,7 +65,7 @@ class KnowledgeBaseDeleteService:
         if kb.storage_key:
             try:
                 # Assuming delete API exists or fallback, adjusting this based on typical storage service
-                self.storage_service.delete_file(kb.storage_key) # This might need to match exact Python method name
+                await self.storage_service.delete_file(kb.storage_key) # This might need to match exact Python method name
             except Exception as e:
                 logger.warning(f"删除RustFS文件失败，继续删除知识库记录: kbId={kb_id}, error={str(e)}")
 

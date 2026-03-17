@@ -1,7 +1,9 @@
+import asyncio
 import time
 import uuid
+from typing import Any
 
-import boto3
+import aioboto3
 from botocore.exceptions import ClientError
 from fastapi import UploadFile
 import re
@@ -18,37 +20,51 @@ class FileStorageService:
     Service for handling file operations with RustFS (S3 compatible).
     """
     def __init__(self):
-        # 根据配置获取RustFS的客户端
-        self.s3_client = boto3.client(
-            's3',
+        self.s3_session: aioboto3.Session = aioboto3.Session()
+        self.bucket_name: str = app_config.rustfs_bucket_name
+        self.bucket_checked: bool = False
+        self.bucket_check_lock: asyncio.Lock = asyncio.Lock()
+
+    def _create_s3_client(self) -> Any:
+        return self.s3_session.client(
+            "s3",
             endpoint_url=app_config.rustfs_endpoint_url,
             aws_access_key_id=app_config.rustfs_access_key,
             aws_secret_access_key=app_config.rustfs_secret_key,
-            region_name=app_config.rustfs_region_name
+            region_name=app_config.rustfs_region_name,
         )
-        self.bucket_name = app_config.rustfs_bucket_name
-        self.ensure_bucket_exists()
 
-    def ensure_bucket_exists(self) -> None:
+    async def ensure_bucket_exists(self) -> None:
         """
         确保 bucket 存在，不存在则自动创建。
 
         Ensure the configured bucket exists in RustFS.
         If it does not exist, create it automatically.
         """
-        try:
-            self.s3_client.head_bucket(Bucket=self.bucket_name)
-        except ClientError as e:
-            error_code: str = e.response.get("Error", {}).get("Code", "")
-            if error_code == "404" or error_code == "NoSuchBucket":
-                logging.info("Bucket '%s' 不存在，正在创建...", self.bucket_name)
-                try:
-                    self.s3_client.create_bucket(Bucket=self.bucket_name)
-                    logging.info("Bucket '%s' 创建成功", self.bucket_name)
-                except ClientError as create_err:
-                    raise Exception(f"Failed to create bucket '{self.bucket_name}': {str(create_err)}")
-            else:
-                raise Exception(f"Failed to check bucket '{self.bucket_name}': {str(e)}")
+        if self.bucket_checked:
+            return
+
+        async with self.bucket_check_lock:
+            if self.bucket_checked:
+                return
+
+            try:
+                async with self._create_s3_client() as s3_client:
+                    await s3_client.head_bucket(Bucket=self.bucket_name)
+            except ClientError as e:
+                error_code: str = e.response.get("Error", {}).get("Code", "")
+                if error_code == "404" or error_code == "NoSuchBucket":
+                    logging.info("Bucket '%s' 不存在，正在创建...", self.bucket_name)
+                    try:
+                        async with self._create_s3_client() as s3_client:
+                            await s3_client.create_bucket(Bucket=self.bucket_name)
+                        logging.info("Bucket '%s' 创建成功", self.bucket_name)
+                    except ClientError as create_err:
+                        raise Exception(f"Failed to create bucket '{self.bucket_name}': {str(create_err)}")
+                else:
+                    raise Exception(f"Failed to check bucket '{self.bucket_name}': {str(e)}")
+
+            self.bucket_checked = True
 
     async def upload_file_to_rustfs(self, file: UploadFile, prefix: str) -> str:
         """
@@ -56,16 +72,18 @@ class FileStorageService:
 
         Upload resume to RustFS, returns fileKey
         """
-        file_key = self.generate_file_key(file.filename, prefix)
+        file_key = self.generate_file_key(file.filename or "unknown", prefix)
+        await self.ensure_bucket_exists()
         
         try:
             file_content = await file.read()
-            self.s3_client.put_object(
-                Bucket=self.bucket_name,
-                Key=file_key,
-                Body=file_content,
-                ContentType=file.content_type
-            )
+            async with self._create_s3_client() as s3_client:
+                await s3_client.put_object(
+                    Bucket=self.bucket_name,
+                    Key=file_key,
+                    Body=file_content,
+                    ContentType=file.content_type
+                )
         except ClientError as e:
             raise Exception(f"Failed to upload file to RustFS: {str(e)}")
         finally:
@@ -81,52 +99,58 @@ class FileStorageService:
         """上传知识库文件"""
         return await self.upload_file_to_rustfs(file, "knowledgebase")
 
-    def get_file_url(self, file_key: str) -> str:
+    async def get_file_url(self, file_key: str) -> str:
         """
         获取RustFS文件的预签名URL
 
         Get RustFS presigned URL
         """
+        await self.ensure_bucket_exists()
         try:
-            url = self.s3_client.generate_presigned_url(
-                'get_object',
-                Params={
-                    'Bucket': self.bucket_name,
-                    'Key': file_key
-                },
-                ExpiresIn=3600
-            )
-            return url
+            async with self._create_s3_client() as s3_client:
+                url: str = s3_client.generate_presigned_url(
+                    'get_object',
+                    Params={
+                        'Bucket': self.bucket_name,
+                        'Key': file_key
+                    },
+                    ExpiresIn=3600
+                )
+                return url
         except ClientError as e:
             raise Exception(f"Failed to generate URL for file: {str(e)}")
 
-    def download_file(self, file_key: str) -> bytes:
+    async def download_file(self, file_key: str) -> bytes:
         """
         从RustFS下载文件内容。
 
         Download file content from RustFS by key.
         """
+        await self.ensure_bucket_exists()
         try:
-            response = self.s3_client.get_object(
-                Bucket=self.bucket_name,
-                Key=file_key,
-            )
-            return response["Body"].read()
+            async with self._create_s3_client() as s3_client:
+                response: dict[str, Any] = await s3_client.get_object(
+                    Bucket=self.bucket_name,
+                    Key=file_key,
+                )
+                return await response["Body"].read()
         except ClientError as e:
             raise Exception(f"Failed to download file from RustFS: {str(e)}")
 
-    def file_exists(self, file_key: str) -> bool:
+    async def file_exists(self, file_key: str) -> bool:
         """
         根据 file_key 检查文件是否存在。
 
         Check whether a file exists in RustFS by its key.
         Uses HEAD request to avoid downloading the file content.
         """
+        await self.ensure_bucket_exists()
         try:
-            self.s3_client.head_object(
-                Bucket=self.bucket_name,
-                Key=file_key,
-            )
+            async with self._create_s3_client() as s3_client:
+                await s3_client.head_object(
+                    Bucket=self.bucket_name,
+                    Key=file_key,
+                )
             return True
         except ClientError as e:
             error_code: str = e.response.get("Error", {}).get("Code", "")
@@ -134,23 +158,25 @@ class FileStorageService:
                 return False
             raise Exception(f"Failed to check file existence in RustFS: {str(e)}")
 
-    def get_file_size(self, file_key: str) -> int:
+    async def get_file_size(self, file_key: str) -> int:
         """
         根据 file_key 获取文件大小（字节）。
 
         Get file size in bytes from RustFS by its key.
         Returns ContentLength from HEAD response.
         """
+        await self.ensure_bucket_exists()
         try:
-            response = self.s3_client.head_object(
-                Bucket=self.bucket_name,
-                Key=file_key,
-            )
+            async with self._create_s3_client() as s3_client:
+                response: dict[str, Any] = await s3_client.head_object(
+                    Bucket=self.bucket_name,
+                    Key=file_key,
+                )
             return response["ContentLength"]
         except ClientError as e:
             raise Exception(f"Failed to get file size from RustFS: {str(e)}")
 
-    def delete_file(self, file_key: str) -> None:
+    async def delete_file(self, file_key: str) -> None:
         """
         根据 file_key 删除文件。
 
@@ -161,15 +187,17 @@ class FileStorageService:
             logging.debug("文件键为空，跳过删除")
             return
 
-        if not self.file_exists(file_key):
+        if not await self.file_exists(file_key):
             logging.debug("文件不存在，跳过删除")
             return
 
+        await self.ensure_bucket_exists()
         try:
-            self.s3_client.delete_object(
-                Bucket=self.bucket_name,
-                Key=file_key,
-            )
+            async with self._create_s3_client() as s3_client:
+                await s3_client.delete_object(
+                    Bucket=self.bucket_name,
+                    Key=file_key,
+                )
             logging.debug("文件删除成功")
         except ClientError as e:
             raise Exception(f"Failed to delete file from RustFS: {str(e)}")
@@ -187,7 +215,7 @@ class FileStorageService:
             return "unknow"
         return self.convert_to_pinyin(filename)
 
-    def convert_to_pinyin(self, filename):
+    def convert_to_pinyin(self, filename: str) -> str:
         """把文件名汉字转换成拼音，特殊字符替换为_"""
         # 1. 允许的字符
         allowed_pattern = r"[a-zA-Z0-9.\-_]"

@@ -92,7 +92,7 @@ class KnowledgeBaseUploadService:
 
         # 5. 保存文件到RustFS
         file_key: str = await self.storage_service.upload_knowledgebase(file)
-        file_url: str = self.storage_service.get_file_url(file_key)
+        file_url: str = await self.storage_service.get_file_url(file_key)
         logger.info("知识库已存储到RustFS: %s", file_key)
 
         # 6. 保存知识库元数据到数据库（状态为 PENDING）
@@ -141,7 +141,7 @@ class KnowledgeBaseUploadService:
         if not existing_kb.storage_key:
             raise BusinessException(ErrorCode.SYSTEM_ERROR, "知识库文件存储Key缺失，无法重新向量化")
 
-        file_bytes: bytes = self.storage_service.download_file(existing_kb.storage_key)
+        file_bytes: bytes = await self.storage_service.download_file(existing_kb.storage_key)
         content: str = await self.parse_service.parse_content_from_bytes(file_bytes, existing_kb.original_filename)
 
         if not content or not content.strip():

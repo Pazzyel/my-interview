@@ -71,7 +71,7 @@ class ResumeUploadService:
         # 保存到RustFS
         # Storage
         file_key = await self.storage_service.upload_resume(file)
-        file_url = self.storage_service.get_file_url(file_key)
+        file_url = await self.storage_service.get_file_url(file_key)
         
         logger.info(f"Resume stored to RustFS: {file_key}")
 
