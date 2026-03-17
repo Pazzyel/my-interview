@@ -1,7 +1,9 @@
+import asyncio
+import json
 import logging
 import re
 from pathlib import Path
-from typing import Optional, List, Dict, cast
+from typing import Optional, List, Dict, cast, AsyncGenerator, Any
 
 import aiofile
 import regex
@@ -270,6 +272,27 @@ class KnowledgeBaseQueryService:
         initial_state: KnowledgeQueryState = KnowledgeQueryState(origin_query=question, knowledgebase_ids=ids)
         response_state: KnowledgeQueryState = await self.app.ainvoke(initial_state,config=config)
         return response_state.response
+
+    async def answer_question_stream(self, question: str, ids: List[int]) -> AsyncGenerator[str]:
+        """根据知识库回答问题，流式输出"""
+        config: RunnableConfig = {
+            "configurable": {
+                "thread_id": "customer_1"
+            }
+        }
+        initial_state: KnowledgeQueryState = KnowledgeQueryState(origin_query=question, knowledgebase_ids=ids)
+        async for event in self.app.astream(
+                initial_state,
+                config=config,
+                stream_mode="updates"
+        ):
+            # 3. 格式化为 SSE 协议格式
+            # event 结构通常为: {"node_name": {"field": "value"}}
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+            # 4. 发送结束信号
+        yield "data: [DONE]\n\n"
+
 
     async def query_knowledge_base(self, db: AsyncSession, request: QueryRequest) -> QueryResponse:
         """根据知识库查询请求执行查询并构建响应"""

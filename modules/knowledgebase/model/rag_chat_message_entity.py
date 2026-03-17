@@ -5,8 +5,8 @@ from modules.knowledgebase.model.knowledgebase_entity import KnowledgeBaseEntity
 
 
 class MessageType(Enum):
-    USER = "USER",
-    ASSISTANT = "ASSISTANT",
+    USER = "USER"
+    ASSISTANT = "ASSISTANT"
 
 class RagChatMessageEntity:
 

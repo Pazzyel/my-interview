@@ -93,6 +93,7 @@ class RagChatSessionORM(Base):
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     
     # 使用 selectin 解决异步懒加载问题 / Use selectin to resolve async lazy loading
+    # 这个字段是中间表加载出来的，rag_chat_session表没有这个字段
     knowledge_bases: Mapped[list["KnowledgeBaseORM"]] = relationship(
         secondary=rag_session_knowledge_bases,
         lazy="selectin"

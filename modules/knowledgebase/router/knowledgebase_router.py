@@ -1,9 +1,9 @@
 import logging
 from fastapi import APIRouter, File, UploadFile, Depends, Form
 from typing import Dict, Any, Optional
-from pydantic import BaseModel
 from typing import List
 from fastapi import Query
+from fastapi.responses import StreamingResponse
 
 from common.exceptions import BusinessException
 from common.models import Result
@@ -185,3 +185,13 @@ async def query_knowledge_base(
     """基于知识库回答问题（支持多知识库）"""
     data: QueryResponse = await knowledgebase_query_service.query_knowledge_base(db, request)
     return Result.success(data=data)
+
+@router.post("/query/stream", response_model=StreamingResponse)
+async def query_knowledge_base_stream(
+    request: QueryRequest,
+):
+    """基于知识库回答问题（流式输出，不会更新知识库计数）"""
+    return StreamingResponse(
+        knowledgebase_query_service.answer_question_stream(request.question, request.knowledge_base_ids),
+        media_type="text/event-stream"
+    )
