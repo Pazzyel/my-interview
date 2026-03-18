@@ -1,21 +1,23 @@
-import asyncio
 import json
 import logging
 import re
+from enum import Enum
 from pathlib import Path
-from typing import Optional, List, Dict, cast, AsyncGenerator, Any
+from typing import Optional, List, Dict, AsyncGenerator, Annotated
 
 import aiofile
 import regex
 import yaml
 from langchain_community.chat_models import ChatOpenAI
 from langchain_core.documents import Document
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import AnyMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.prompts.chat import MessageLikeRepresentation
 from langchain_core.runnables import RunnableConfig
 from langgraph.constants import START, END
-from langgraph.graph import StateGraph
+from langgraph.graph import StateGraph, add_messages
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.types import Command
+from langgraph.types import Command, Checkpointer
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,18 +47,20 @@ class KnowledgeQueryState(BaseModel):
     #   ”top_k": 10
     #   "min_score": 100
     # }
-    knowledgebase_ids: List[int]
-    query_documents: List[Document] = []
-    response: str = ""
+    messages: Annotated[list[AnyMessage], add_messages] = [] # 历史消息
+    knowledgebase_ids: List[int] # 知识库ID列表
+    query_documents: List[Document] = [] # 查询到的文档列表
+    response: str = "" # 模型生成结果
 
 current_dir = Path(__file__).parent
 root_dir = current_dir.parents[2]
 prompt_cache: Dict[str, ChatPromptTemplate] = {} # 全局prompt缓存
-role_map = {
-    "system": "system",
-    "user": "user",
-    "assistant": "assistant",
-}
+
+class Role(Enum):
+    SYSTEM = "system"
+    USER = "user"
+    ASSISTANT = "assistant"
+
 async def load_prompt(node_name: str):
     """
     加载对应名字的提示词文件
@@ -74,15 +78,15 @@ async def load_prompt(node_name: str):
 
     # 动态构建prompt
     node_config = config.get(node_name)
-    messages: List[dict] = []
-    for key, role in role_map.items():
-        if key in node_config:
-            messages.append({
-                "role": role,
-                "content": node_config[key],
-            })
-    # 如果State里有messages历史，需要加占位符
-    # messages.append(MessagesPlaceholder(variable_name="messages"))
+    messages: List[MessageLikeRepresentation] = []
+    # 先加载系统提示词
+    if Role.SYSTEM.value in node_config:
+        messages.append((Role.SYSTEM.value, node_config[Role.SYSTEM.value]))
+    # 再加载历史提示词
+    messages.append(MessagesPlaceholder(variable_name="messages"))
+    # 最后加载用户提问
+    if Role.USER.value in node_config:
+        messages.append((Role.USER.value, node_config[Role.USER.value]))
 
     prompt = ChatPromptTemplate.from_messages(messages)
     prompt_cache[node_name] = prompt
@@ -240,7 +244,7 @@ async def answer_question(state: KnowledgeQueryState) -> Command:
             update={"response": SERVER_ERROR_RESPONSE},
         )
 
-def build_workflow() -> CompiledStateGraph:
+async def build_workflow(checkpointer: Checkpointer = None) -> CompiledStateGraph:
     workflow = StateGraph(KnowledgeQueryState)
     workflow.add_node("pre_retrieve",pre_retrieve)
     workflow.add_node("vector_retrieve",vector_retrieve)
@@ -255,31 +259,35 @@ def build_workflow() -> CompiledStateGraph:
     workflow.add_edge("no_result_response",END)
     workflow.add_edge("answer_question",END)
 
-    return workflow.compile()
+    return workflow.compile(checkpointer = checkpointer)
 
 class KnowledgeBaseQueryService:
     def __init__(self, knowledgebase_list_service: KnowledgeBaseListService):
-        self.app = build_workflow()
+        # self.app = build_workflow()
+        self.app = None
         self.knowledgebase_list_service = knowledgebase_list_service
 
-    async def answer_question(self, question: str, ids: List[int]) -> str:
+    async def build_graph(self, checkpointer: Checkpointer) -> None:
+        self.app = await build_workflow(checkpointer)
+
+    async def answer_question(self, question: str, ids: List[int], session_id: Optional[int] = None) -> str:
         """根据知识库回答问题"""
-        config: RunnableConfig = {
+        config: Optional[RunnableConfig] = {
             "configurable": {
-                "thread_id": "customer_1"
+                "thread_id": session_id
             }
-        }
+        } if session_id is not None else None
         initial_state: KnowledgeQueryState = KnowledgeQueryState(origin_query=question, knowledgebase_ids=ids)
         response_state: KnowledgeQueryState = await self.app.ainvoke(initial_state,config=config)
         return response_state.response
 
-    async def answer_question_stream(self, question: str, ids: List[int]) -> AsyncGenerator[str]:
+    async def answer_question_stream(self, question: str, ids: List[int], session_id: Optional[int] = None) -> AsyncGenerator[str]:
         """根据知识库回答问题，流式输出"""
-        config: RunnableConfig = {
+        config: Optional[RunnableConfig] = {
             "configurable": {
-                "thread_id": "customer_1"
+                "thread_id": session_id
             }
-        }
+        } if session_id is not None else None
         initial_state: KnowledgeQueryState = KnowledgeQueryState(origin_query=question, knowledgebase_ids=ids)
         async for event in self.app.astream(
                 initial_state,

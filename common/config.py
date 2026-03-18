@@ -16,6 +16,7 @@ class AppConfigProperties(BaseSettings):
     resume_analyze_topic: str = "resume-analyze-topic"
     resume_analyze_tag: str = "analyze"
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/interview_db"
+    DB_URI = "mysql://mysql:mysql@localhost:3306/mysql" # 这是LangGraph checkpointer的保存点
 
     # RustFS (S3 compatible) config
     rustfs_endpoint_url: str = "http://localhost:9000"
