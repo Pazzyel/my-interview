@@ -10,6 +10,7 @@ from common.dependencies import knowledgebase_query_service, analyze_message_con
 from common.exceptions import BusinessException
 from modules.knowledgebase.router import knowledgebase_router
 from modules.knowledgebase.router import rag_chat_router
+from modules.interview.router import interview_router
 from modules.resume.router import resume_router
 
 logging.basicConfig(level=logging.INFO)
@@ -34,6 +35,7 @@ app = FastAPI(title="Resume Analysis Service Migration", version="1.0", lifespan
 app.include_router(resume_router.router)
 app.include_router(knowledgebase_router.router)
 app.include_router(rag_chat_router.router)
+app.include_router(interview_router.router)
 
 @app.exception_handler(BusinessException)
 async def business_exception_handler(request: Request, exc: BusinessException):

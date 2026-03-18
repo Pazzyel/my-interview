@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.config import app_config
 from common.exceptions import BusinessException, ErrorCode
+from common.models import AsyncTaskStatus
 from infrastructure.file.file_hash_service import FileHashService
 from infrastructure.file.file_storage_service import FileStorageService
 from infrastructure.file.file_validation_service import FileValidationService
@@ -144,3 +145,17 @@ class ResumeUploadService:
             },
             "duplicate": True
         }
+
+    async def reanalyze(self, db: AsyncSession, resume_id: int) -> None:
+        """
+        重新触发已有简历的分析任务，并重置分析状态。
+        Re-trigger analysis task for an existing resume and reset analyze status.
+        """
+        resume: ResumeEntity | None = await self.resume_repository.find_by_id(db, resume_id)
+        if resume is None:
+            raise BusinessException(ErrorCode.RESUME_NOT_FOUND, "简历不存在")
+        if resume.resumeText is None or resume.resumeText.strip() == "":
+            raise BusinessException(ErrorCode.RESUME_PARSE_FAILED, "简历文本为空，无法重分析")
+
+        await self.resume_repository.update_analyze_status(db, resume_id, AsyncTaskStatus.PENDING, None)
+        self.analyze_stream_producer.send_analyze_task(resume_id, resume.resumeText)

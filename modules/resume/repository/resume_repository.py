@@ -1,7 +1,7 @@
 import json
 from typing import Dict, Optional
 
-from sqlalchemy import select, desc, update, insert
+from sqlalchemy import select, desc, update, insert, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.models import AsyncTaskStatus
@@ -46,6 +46,13 @@ class ResumeRepository:
         if orm_obj:
             return self.to_resume_entity(orm_obj)
         return None
+
+    async def find_all_ordered(self, db: AsyncSession) -> list[ResumeEntity]:
+        """Find all resumes ordered by upload time desc."""
+        stmt = select(ResumeORM).order_by(desc(ResumeORM.uploadedAt))
+        result = await db.execute(stmt)
+        orm_list: list[ResumeORM] = list(result.scalars().all())
+        return [self.to_resume_entity(item) for item in orm_list]
 
     async def save(self, db: AsyncSession, resume: ResumeEntity) -> ResumeEntity:
         """Insert a new resume record."""
@@ -95,6 +102,17 @@ class ResumeRepository:
         analysis.id = analysis_id
         return analysis
 
+    async def find_analyses_by_resume_id(self, db: AsyncSession, resume_id: int) -> list[ResumeAnalysisEntity]:
+        """Find all analyses by resume id ordered by analyzed time desc."""
+        stmt = (
+            select(ResumeAnalysisORM)
+            .where(ResumeAnalysisORM.resume_id == resume_id)
+            .order_by(desc(ResumeAnalysisORM.analyzedAt))
+        )
+        result = await db.execute(stmt)
+        orm_list: list[ResumeAnalysisORM] = list(result.scalars().all())
+        return [self.to_analysis_entity(item) for item in orm_list]
+
     async def get_latest_analysis_as_dto(self, db: AsyncSession, resume_id: int) -> Optional[ResumeAnalysisResponse]:
         """Fetch the latest analysis for a given resume ID."""
         stmt = (
@@ -124,6 +142,11 @@ class ResumeRepository:
             suggestions=suggestions
         )
 
+    async def delete_by_id(self, db: AsyncSession, resume_id: int) -> None:
+        """Delete resume analysis records then resume itself."""
+        await db.execute(delete(ResumeAnalysisORM).where(ResumeAnalysisORM.resume_id == resume_id))
+        await db.execute(delete(ResumeORM).where(ResumeORM.id == resume_id))
+
     def to_resume_entity(self, orm_obj: ResumeORM) -> ResumeEntity:
         return ResumeEntity(
             id=orm_obj.id,
@@ -139,6 +162,22 @@ class ResumeRepository:
             accessCount=orm_obj.accessCount,
             analyzeStatus=orm_obj.analyzeStatus,
             analyzeError=orm_obj.analyzeError
+        )
+
+    def to_analysis_entity(self, orm_obj: ResumeAnalysisORM) -> ResumeAnalysisEntity:
+        return ResumeAnalysisEntity(
+            id=orm_obj.id,
+            resume_id=orm_obj.resume_id,
+            overallScore=orm_obj.overallScore,
+            contentScore=orm_obj.contentScore,
+            structureScore=orm_obj.structureScore,
+            skillMatchScore=orm_obj.skillMatchScore,
+            expressionScore=orm_obj.expressionScore,
+            projectScore=orm_obj.projectScore,
+            summary=orm_obj.summary,
+            strengthsJson=orm_obj.strengthsJson,
+            suggestionsJson=orm_obj.suggestionsJson,
+            analyzedAt=orm_obj.analyzedAt,
         )
 
     def to_resume_orm(self, resume: ResumeEntity) -> ResumeORM:

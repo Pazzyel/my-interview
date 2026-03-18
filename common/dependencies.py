@@ -4,6 +4,9 @@ from infrastructure.file.file_storage_service import FileStorageService
 from infrastructure.file.file_validation_service import FileValidationService
 from modules.knowledgebase.listener.vectorize_message_consumer import VectorizeMessageConsumer
 from modules.knowledgebase.listener.vectorize_message_producer import VectorizeMessageProducer
+from modules.interview.repository.interview_repository import InterviewRepository
+from modules.interview.service.interview_history_service import InterviewHistoryService
+from modules.interview.service.interview_persistence_service import InterviewPersistenceService
 # ────── Knowledge Base imports ──────
 from modules.knowledgebase.repository.knowledgebase_repository import KnowledgeBaseRepository
 from modules.knowledgebase.repository.rag_chat_repository import RagChatRepository
@@ -22,7 +25,9 @@ from modules.resume.listener.analyze_message_producer import AnalyzeMessageProdu
 from modules.resume.listener.analyze_message_consumer import AnalyzeMessageConsumer
 from modules.resume.repository.resume_repository import ResumeRepository
 from modules.resume.service.resume_analyze_consumer_service import ResumeAnalyzeConsumerService
+from modules.resume.service.resume_delete_service import ResumeDeleteService
 from modules.resume.service.resume_grading_service import ResumeGradingService
+from modules.resume.service.resume_history_service import ResumeHistoryService
 from modules.resume.service.resume_parse_service import ResumeParseService
 from modules.resume.service.resume_upload_service import ResumeUploadService
 
@@ -36,6 +41,10 @@ file_validation_service = FileValidationService()
 # ==================== Resume Module ====================
 
 resume_repository = ResumeRepository()
+interview_repository = InterviewRepository()
+interview_persistence_service = InterviewPersistenceService(interview_repository)
+interview_history_service = InterviewHistoryService(interview_repository)
+
 analyze_message_producer = AnalyzeMessageProducer(resume_repository)
 resume_grading_service = ResumeGradingService()
 resume_analyze_consumer_service = ResumeAnalyzeConsumerService(resume_repository, resume_grading_service)
@@ -49,6 +58,12 @@ resume_upload_service = ResumeUploadService(
     file_hash_service,
     analyze_message_producer, 
     resume_repository
+)
+resume_history_service = ResumeHistoryService(resume_repository, interview_repository)
+resume_delete_service = ResumeDeleteService(
+    resume_repository,
+    interview_persistence_service,
+    file_storage_service,
 )
 
 # ==================== Knowledge Base Module ====================

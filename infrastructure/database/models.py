@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, ForeignKey, Enum as SQLEnum, Table, Boolean
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from common.models import AsyncTaskStatus
@@ -44,6 +45,65 @@ class ResumeAnalysisORM(Base):
     strengthsJson: Mapped[str] = mapped_column(Text, nullable=True)
     suggestionsJson: Mapped[str] = mapped_column(Text, nullable=True)
     analyzedAt: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class InterviewSessionStatus(str, Enum):
+    CREATED = "CREATED"
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    EVALUATED = "EVALUATED"
+
+
+class InterviewSessionORM(Base):
+    __tablename__ = "interview_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(36), unique=True, index=True, nullable=False)
+    resume_id: Mapped[int] = mapped_column(ForeignKey("resumes.id"), nullable=False, index=True)
+    total_questions: Mapped[int] = mapped_column(Integer, nullable=False)
+    current_question_index: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[InterviewSessionStatus] = mapped_column(
+        SQLEnum(InterviewSessionStatus, name="interview_session_status", create_type=False),
+        default=InterviewSessionStatus.CREATED,
+    )
+    questions_json: Mapped[str] = mapped_column(Text, nullable=True)
+    overall_score: Mapped[int] = mapped_column(Integer, nullable=True)
+    overall_feedback: Mapped[str] = mapped_column(Text, nullable=True)
+    strengths_json: Mapped[str] = mapped_column(Text, nullable=True)
+    improvements_json: Mapped[str] = mapped_column(Text, nullable=True)
+    reference_answers_json: Mapped[str] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    completed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    evaluate_status: Mapped[AsyncTaskStatus] = mapped_column(
+        SQLEnum(AsyncTaskStatus, name="async_task_status", create_type=False),
+        default=AsyncTaskStatus.PENDING,
+    )
+    evaluate_error: Mapped[str] = mapped_column(String(500), nullable=True)
+
+    answers: Mapped[list["InterviewAnswerORM"]] = relationship(
+        "InterviewAnswerORM",
+        back_populates="session",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+
+class InterviewAnswerORM(Base):
+    __tablename__ = "interview_answers"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    session_pk_id: Mapped[int] = mapped_column(ForeignKey("interview_sessions.id"), nullable=False, index=True)
+    question_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=True)
+    category: Mapped[str] = mapped_column(String(100), nullable=True)
+    user_answer: Mapped[str] = mapped_column(Text, nullable=True)
+    score: Mapped[int] = mapped_column(Integer, nullable=True)
+    feedback: Mapped[str] = mapped_column(Text, nullable=True)
+    reference_answer: Mapped[str] = mapped_column(Text, nullable=True)
+    key_points_json: Mapped[str] = mapped_column(Text, nullable=True)
+    answered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    session: Mapped[InterviewSessionORM] = relationship("InterviewSessionORM", back_populates="answers")
 
 class KnowledgeBaseORM(Base):
     __tablename__ = 'knowledge_bases'
