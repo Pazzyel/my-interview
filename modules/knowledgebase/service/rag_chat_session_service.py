@@ -1,5 +1,6 @@
 import logging
-from typing import Dict, List
+import json
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,13 +15,19 @@ from modules.knowledgebase.model.rag_chat_session_dto import (
     SessionListItemDTO,
 )
 from modules.knowledgebase.repository.rag_chat_session_repository import RagChatSessionRepository
+from modules.knowledgebase.service.knowledgebase_query_service import KnowledgeBaseQueryService
 
 
 class RagChatSessionService:
     """RAG 聊天会话业务层。"""
 
-    def __init__(self, rag_chat_session_repository: RagChatSessionRepository):
+    def __init__(
+        self,
+        rag_chat_session_repository: RagChatSessionRepository,
+        knowledgebase_query_service: KnowledgeBaseQueryService,
+    ):
         self.rag_chat_session_repository: RagChatSessionRepository = rag_chat_session_repository
+        self.knowledgebase_query_service: KnowledgeBaseQueryService = knowledgebase_query_service
 
     async def create_session(self, db: AsyncSession, request: CreateSessionRequest) -> SessionDTO:
         """
@@ -136,6 +143,113 @@ class RagChatSessionService:
         if not deleted:
             raise BusinessException(ErrorCode.NOT_FOUND, "会话不存在")
         logging.info("删除会话: sessionId={}", session_id)
+
+    async def prepare_stream_message(self, db: AsyncSession, session_id: int, question: str) -> int:
+        """准备流式回答消息（用户消息 + AI 占位）。"""
+        message_id: Optional[int] = await self.rag_chat_session_repository.prepare_stream_messages(db, session_id, question)
+        if message_id is None:
+            raise BusinessException(ErrorCode.NOT_FOUND, "会话不存在")
+
+        logging.info("准备流式消息: sessionId={}, messageId={}", session_id, message_id)
+        return message_id
+
+    async def complete_stream_message(self, db: AsyncSession, message_id: int, content: str) -> None:
+        """流式回答结束后回写内容。"""
+        updated: bool = await self.rag_chat_session_repository.complete_stream_message(db, message_id, content)
+        if not updated:
+            raise BusinessException(ErrorCode.NOT_FOUND, "消息不存在")
+
+        logging.info("完成流式消息: messageId={}, contentLength={}", message_id, len(content))
+
+    async def get_stream_answer(self, db: AsyncSession, session_id: int, question: str) -> AsyncGenerator[str]:
+        """读取会话绑定知识库并返回流式回答。"""
+        session_entity: Optional[RagChatSessionEntity] = await self.rag_chat_session_repository.get_session_by_id(db, session_id)
+        if session_entity is None:
+            raise BusinessException(ErrorCode.NOT_FOUND, "会话不存在")
+
+        kb_ids: List[int] = [item.id for item in session_entity.knowledge_bases if item.id is not None]
+        if len(kb_ids) == 0:
+            raise BusinessException(ErrorCode.VALIDATION_ERROR, "会话未关联知识库")
+
+        async for stream_item in self.knowledgebase_query_service.answer_question_stream(question, kb_ids, session_id):
+            yield stream_item
+
+    async def send_message_stream(
+        self,
+        db: AsyncSession,
+        session_id: int,
+        question: str,
+    ) -> AsyncGenerator[str]:
+        """
+        完成“预落库 -> 流式输出 -> 回写消息”
+
+        workflow with "prepare -> stream -> complete" lifecycle.
+        """
+        # 1) 先写入用户消息并创建 AI 占位消息
+        message_id: int = await self.prepare_stream_message(db, session_id, question)
+        final_content: str = ""
+
+        try:
+            # 2) 转发底层 SSE 流，并提取可回写的回答内容
+            async for stream_item in self.get_stream_answer(db, session_id, question):
+                final_content = self._merge_stream_content(final_content, self._extract_response_content(stream_item))
+                yield stream_item
+
+            # 3) 正常结束后回写 AI 消息
+            await self.complete_stream_message(db, message_id, final_content)
+        except Exception as error:
+            # 4) 异常时也回写内容
+            fallback_content: str = final_content if final_content != "" else f"【错误】回答生成失败：{str(error)}"
+            await self.complete_stream_message(db, message_id, fallback_content)
+            raise
+
+    def _extract_response_content(self, stream_item: str) -> str:
+        """从 SSE data 行中提取 response 字段文本。"""
+        if not stream_item.startswith("data: "):
+            return ""
+
+        payload: str = stream_item[6:].strip()
+        if payload == "[DONE]" or payload == "":
+            return ""
+
+        try:
+            payload_object: Any = json.loads(payload)
+        except json.JSONDecodeError:
+            return ""
+
+        collected_text_list: List[str] = []
+        self._collect_response_text(payload_object, collected_text_list)
+        if len(collected_text_list) == 0:
+            return ""
+
+        longest_text: str = max(collected_text_list, key=len)
+        return longest_text
+
+    def _collect_response_text(self, current_value: Any, output_list: List[str]) -> None:
+        """递归提取事件中 key=response 的字符串字段。"""
+        if isinstance(current_value, dict):
+            for key, value in current_value.items():
+                if key == "response" and isinstance(value, str):
+                    output_list.append(value)
+                else:
+                    self._collect_response_text(value, output_list)
+            return
+
+        if isinstance(current_value, list):
+            for item in current_value:
+                self._collect_response_text(item, output_list)
+
+    def _merge_stream_content(self, current_content: str, incoming_content: str) -> str:
+        """兼容“增量片段”和“全量覆盖”两类流式内容格式。"""
+        if incoming_content == "":
+            return current_content
+        if current_content == "":
+            return incoming_content
+        if incoming_content.startswith(current_content):
+            return incoming_content
+        if current_content.endswith(incoming_content):
+            return current_content
+        return current_content + incoming_content
 
     def _resolve_title(self, input_title: str | None, knowledge_base_names: List[str]) -> str:
         """生成默认标题。"""

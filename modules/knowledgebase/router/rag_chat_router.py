@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.dependencies import rag_chat_session_service
@@ -9,6 +10,7 @@ from modules.knowledgebase.model.rag_chat_session_dto import (
     SessionDTO,
     SessionDetailDTO,
     SessionListItemDTO,
+    SendMessageRequest,
     UpdateKnowledgeBasesRequest,
     UpdateTitleRequest,
 )
@@ -78,3 +80,15 @@ async def delete_session(
 ) -> Result[None]:
     await rag_chat_session_service.delete_session(db, session_id)
     return Result.success(data=None)
+
+
+@router.post("/sessions/{session_id}/messages/stream", response_model=StreamingResponse)
+async def send_message_stream(
+    session_id: int,
+    request: SendMessageRequest,
+    db: AsyncSession = Depends(get_async_session),
+) -> StreamingResponse:
+    return StreamingResponse(
+        rag_chat_session_service.send_message_stream(db, session_id, request.question),
+        media_type="text/event-stream",
+    )

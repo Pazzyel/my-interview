@@ -161,6 +161,63 @@ class RagChatSessionRepository:
 
         return message_entities
 
+    async def prepare_stream_messages(self, db: AsyncSession, session_id: int, question: str) -> Optional[int]:
+        """保存用户消息并创建 AI 占位消息，返回 AI 消息 ID。"""
+        session_stmt = select(RagChatSessionORM).where(RagChatSessionORM.id == session_id)
+        session_result = await db.execute(session_stmt)
+        session_orm: Optional[RagChatSessionORM] = session_result.scalar_one_or_none()
+        if session_orm is None:
+            return None
+
+        next_order: int = int(session_orm.message_count)
+        now: datetime = datetime.now()
+
+        user_message_data: Dict[str, Any] = {
+            "session_id": session_id,
+            "type": "USER",
+            "content": question,
+            "message_order": next_order,
+            "completed": True,
+            "created_at": now,
+            "updated_at": now,
+        }
+        await db.execute(insert(RagChatMessageORM).values(**user_message_data))
+
+        assistant_message_data: Dict[str, Any] = {
+            "session_id": session_id,
+            "type": "ASSISTANT",
+            "content": "",
+            "message_order": next_order + 1,
+            "completed": False,
+            "created_at": now,
+            "updated_at": now,
+        }
+        assistant_insert_result = await db.execute(insert(RagChatMessageORM).values(**assistant_message_data))
+        assistant_message_id: int = int(assistant_insert_result.inserted_primary_key[0]) # type: ignore
+
+        session_update_data: Dict[str, Any] = {
+            "message_count": next_order + 2,
+            "updated_at": now,
+        }
+        await db.execute(
+            update(RagChatSessionORM)
+            .where(RagChatSessionORM.id == session_id)
+            .values(**session_update_data)
+        )
+        return assistant_message_id
+
+    async def complete_stream_message(self, db: AsyncSession, message_id: int, content: str) -> bool:
+        """流式回答完成后回写 AI 消息内容。"""
+        update_data: Dict[str, Any] = {
+            "content": content,
+            "completed": True,
+            "updated_at": datetime.now(),
+        }
+        stmt = update(RagChatMessageORM).where(RagChatMessageORM.id == message_id).values(**update_data)
+        result = await db.execute(stmt)
+        row_count: int = int(result.rowcount or 0) # type: ignore
+        return row_count > 0
+
     async def update_session_title(self, db: AsyncSession, session_id: int, title: str) -> bool:
         """更新会话标题。"""
         update_data: Dict[str, Any] = {

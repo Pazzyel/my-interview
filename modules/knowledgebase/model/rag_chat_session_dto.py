@@ -20,6 +20,10 @@ class UpdateKnowledgeBasesRequest(BaseCamelSchema):
     knowledge_base_ids: List[int] = Field(..., min_length=1)
 
 
+class SendMessageRequest(BaseCamelSchema):
+    question: str = Field(..., min_length=1)
+
+
 class SessionDTO(BaseCamelSchema):
     id: int
     title: str

@@ -20,5 +20,5 @@ class Result(BaseModel, Generic[T]):
         return cls(code=200, message=message, data=data)
         
     @classmethod
-    def error(cls, code: int, message: str) -> "Result[Any]":
+    def error(cls, code: int , message: str) -> "Result[Any]":
         return cls(code=code, message=message, data=None)

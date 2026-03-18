@@ -72,4 +72,4 @@ knowledgebase_delete_service = KnowledgeBaseDeleteService(
     knowledgebase_repository, rag_chat_repository, knowledgebase_vector_service, file_storage_service
 )
 knowledgebase_query_service = KnowledgeBaseQueryService(knowledgebase_list_service)
-rag_chat_session_service = RagChatSessionService(rag_chat_session_repository)
+rag_chat_session_service = RagChatSessionService(rag_chat_session_repository, knowledgebase_query_service)
