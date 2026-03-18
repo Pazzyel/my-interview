@@ -2,6 +2,7 @@ from infrastructure.file.document_parse_service import DocumentParseService
 from infrastructure.file.file_hash_service import FileHashService
 from infrastructure.file.file_storage_service import FileStorageService
 from infrastructure.file.file_validation_service import FileValidationService
+from modules.knowledgebase.listener.vectorize_message_consumer import VectorizeMessageConsumer
 from modules.knowledgebase.listener.vectorize_message_producer import VectorizeMessageProducer
 # ────── Knowledge Base imports ──────
 from modules.knowledgebase.repository.knowledgebase_repository import KnowledgeBaseRepository
@@ -15,6 +16,7 @@ from modules.knowledgebase.service.knowledgebase_persistence_service import Know
 from modules.knowledgebase.service.knowledgebase_upload_service import KnowledgeBaseUploadService
 from modules.knowledgebase.service.knowledgebase_vector_service import KnowledgeBaseVectorService
 from modules.knowledgebase.service.knowledgebase_query_service import KnowledgeBaseQueryService
+from modules.knowledgebase.service.knowledgebase_vectorize_consumer_service import KnowledgeBaseVectorizeConsumerService
 from modules.knowledgebase.service.rag_chat_session_service import RagChatSessionService
 from modules.resume.listener.analyze_message_producer import AnalyzeMessageProducer
 from modules.resume.listener.analyze_message_consumer import AnalyzeMessageConsumer
@@ -59,6 +61,14 @@ knowledgebase_vector_service = KnowledgeBaseVectorService()
 knowledgebase_parse_service = KnowledgeBaseParseService(document_parse_service, file_storage_service)
 knowledgebase_persistence_service = KnowledgeBasePersistenceService(knowledgebase_repository)
 vectorize_message_producer = VectorizeMessageProducer(knowledgebase_repository)
+knowledgebase_vectorize_consumer_service = KnowledgeBaseVectorizeConsumerService(
+    knowledgebase_repository,
+    knowledgebase_vector_service,
+)
+vectorize_message_consumer = VectorizeMessageConsumer(
+    knowledgebase_vectorize_consumer_service,
+    vectorize_message_producer,
+)
 
 knowledgebase_upload_service = KnowledgeBaseUploadService(
     knowledgebase_parse_service,

@@ -19,6 +19,7 @@ class VectorizeTaskPayload:
     kb_name: str
     kb_category: str
     content: str
+    retry_count: int = 0
 
 
 class VectorizeMessageProducer(AbstractMessageProducer[VectorizeTaskPayload]):
@@ -33,14 +34,29 @@ class VectorizeMessageProducer(AbstractMessageProducer[VectorizeTaskPayload]):
 
     # ────────── 公开 API ──────────
 
-    def send_vectorize_task(self, kb_id: int,kb_name: str, kb_category: str, content: str) -> None:
+    def send_vectorize_task(
+        self,
+        kb_id: int,
+        kb_name: str,
+        kb_category: str,
+        content: str,
+        retry_count: int = 0,
+    ) -> None:
         """
         发送向量化任务到 RocketMQ。
 
         :param kb_id:   知识库 ID
         :param content: 文档文本内容
         """
-        self.send_task(VectorizeTaskPayload(kb_id=kb_id, kb_name=kb_name, kb_category=kb_category, content=content))
+        self.send_task(
+            VectorizeTaskPayload(
+                kb_id=kb_id,
+                kb_name=kb_name,
+                kb_category=kb_category,
+                content=content,
+                retry_count=retry_count,
+            )
+        )
 
     # ────────── 抽象方法实现 ──────────
 
@@ -56,8 +72,10 @@ class VectorizeMessageProducer(AbstractMessageProducer[VectorizeTaskPayload]):
     def build_message(self, payload: VectorizeTaskPayload) -> Dict[str, Any]:
         return {
             "kbId": payload.kb_id,
+            "kbName": payload.kb_name,
+            "kbCategory": payload.kb_category,
             "content": payload.content,
-            "retryCount": 0,
+            "retryCount": payload.retry_count,
         }
 
     def payload_identifier(self, payload: VectorizeTaskPayload) -> str:

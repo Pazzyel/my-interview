@@ -33,6 +33,7 @@ class AppConfigProperties(BaseSettings):
     # Knowledge Base config
     kb_vectorize_topic: str = "kb-vectorize-topic"
     kb_vectorize_tag: str = "vectorize"
+    kb_vectorize_consumer_group: str = "kb-vectorize-consumer-group"
     kb_allowed_types: list[str] = [
         "application/pdf",
         "application/msword",
