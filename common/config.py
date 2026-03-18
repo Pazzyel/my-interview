@@ -13,6 +13,8 @@ class AppConfigProperties(BaseSettings):
     # RocketMQ config
     rocketmq_name_server: str = "localhost:9876"
     rocketmq_producer_group: str = "resume-producer-group"
+    rocketmq_consumer_group: str = "resume-consumer-group"
+    rocketmq_max_retry_count: int = 3
     resume_analyze_topic: str = "resume-analyze-topic"
     resume_analyze_tag: str = "analyze"
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/interview_db"

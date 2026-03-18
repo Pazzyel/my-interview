@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from langgraph.checkpoint.mysql.aio import AIOMySQLSaver
 
 from common.config import app_config
-from common.dependencies import knowledgebase_query_service
+from common.dependencies import knowledgebase_query_service, analyze_message_consumer
 from common.exceptions import BusinessException
 from modules.knowledgebase.router import knowledgebase_router
 from modules.knowledgebase.router import rag_chat_router
@@ -20,9 +20,11 @@ async def lifespan(app: FastAPI):
     async with AIOMySQLSaver.from_conn_string(app_config.DB_URI) as checkpointer:
         await checkpointer.setup()
         await knowledgebase_query_service.build_graph(checkpointer)
+        await analyze_message_consumer.start()
         logging.info("LangGraph Checkpointer 已就绪")
         yield
 
+    await analyze_message_consumer.shutdown()
     logging.info("LangGraph Checkpointer 连接池已关闭")
 
 app = FastAPI(title="Resume Analysis Service Migration", version="1.0", lifespan=lifespan)

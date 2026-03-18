@@ -53,4 +53,4 @@ class ResumeAnalysisResponse(BaseModel):
     projectScore: Optional[int] = None
     summary: Optional[str] = None
     strengths: Optional[list[str]] = None
-    suggestions: Optional[list[str]] = None
+    suggestions: Optional[list[dict[str, str]]] = None

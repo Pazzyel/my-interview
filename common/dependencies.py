@@ -17,7 +17,10 @@ from modules.knowledgebase.service.knowledgebase_vector_service import Knowledge
 from modules.knowledgebase.service.knowledgebase_query_service import KnowledgeBaseQueryService
 from modules.knowledgebase.service.rag_chat_session_service import RagChatSessionService
 from modules.resume.listener.analyze_message_producer import AnalyzeMessageProducer
+from modules.resume.listener.analyze_message_consumer import AnalyzeMessageConsumer
 from modules.resume.repository.resume_repository import ResumeRepository
+from modules.resume.service.resume_analyze_consumer_service import ResumeAnalyzeConsumerService
+from modules.resume.service.resume_grading_service import ResumeGradingService
 from modules.resume.service.resume_parse_service import ResumeParseService
 from modules.resume.service.resume_upload_service import ResumeUploadService
 
@@ -32,6 +35,9 @@ file_validation_service = FileValidationService()
 
 resume_repository = ResumeRepository()
 analyze_message_producer = AnalyzeMessageProducer(resume_repository)
+resume_grading_service = ResumeGradingService()
+resume_analyze_consumer_service = ResumeAnalyzeConsumerService(resume_repository, resume_grading_service)
+analyze_message_consumer = AnalyzeMessageConsumer(resume_analyze_consumer_service, analyze_message_producer)
 resume_parse_service = ResumeParseService(document_parse_service, file_storage_service)
 
 resume_upload_service = ResumeUploadService(

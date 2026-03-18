@@ -1,18 +1,13 @@
 import json
 import logging
 import re
-from enum import Enum
-from pathlib import Path
-from typing import Optional, List, Dict, AsyncGenerator, Annotated
+from typing import Optional, List, AsyncGenerator, Annotated
 
-import aiofile
 import regex
-import yaml
 from langchain_community.chat_models import ChatOpenAI
 from langchain_core.documents import Document
 from langchain_core.messages import AnyMessage
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.prompts.chat import MessageLikeRepresentation
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableConfig
 from langgraph.constants import START, END
 from langgraph.graph import StateGraph, add_messages
@@ -24,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from common.ai_config import ai_config
 from common.dependencies import knowledgebase_vector_service, knowledgebase_count_service
 from infrastructure.database.connection import async_session_factory
+from infrastructure.prompt.prompt_service import load_prompt, has_short_memory
 from modules.knowledgebase.model.query_request import QueryRequest
 from modules.knowledgebase.model.query_response import QueryResponse
 from modules.knowledgebase.service.knowledgebase_list_service import KnowledgeBaseListService
@@ -52,46 +48,6 @@ class KnowledgeQueryState(BaseModel):
     query_documents: List[Document] = [] # 查询到的文档列表
     response: str = "" # 模型生成结果
 
-current_dir = Path(__file__).parent
-root_dir = current_dir.parents[2]
-prompt_cache: Dict[str, ChatPromptTemplate] = {} # 全局prompt缓存
-
-class Role(Enum):
-    SYSTEM = "system"
-    USER = "user"
-    ASSISTANT = "assistant"
-
-async def load_prompt(node_name: str):
-    """
-    加载对应名字的提示词文件
-
-    从resources/prompts/{node_name}.yaml加载
-    """
-    # 有缓存就加载缓存
-    if node_name in prompt_cache:
-        return prompt_cache[node_name]
-
-    prompt_path: Path = root_dir / "resources" / "prompts" / f"{node_name}.yaml"
-    async with aiofile.async_open(prompt_path, "r", encoding="utf-8") as f:
-        content = await f.read()
-    config = yaml.safe_load(content)
-
-    # 动态构建prompt
-    node_config = config.get(node_name)
-    messages: List[MessageLikeRepresentation] = []
-    # 先加载系统提示词
-    if Role.SYSTEM.value in node_config:
-        messages.append((Role.SYSTEM.value, node_config[Role.SYSTEM.value]))
-    # 再加载历史提示词
-    messages.append(MessagesPlaceholder(variable_name="messages"))
-    # 最后加载用户提问
-    if Role.USER.value in node_config:
-        messages.append((Role.USER.value, node_config[Role.USER.value]))
-
-    prompt = ChatPromptTemplate.from_messages(messages)
-    prompt_cache[node_name] = prompt
-    return prompt
-
 def trim_question(question: str) -> str:
     """去除问题的首尾空格"""
     return "" if question is None else question.strip()
@@ -105,7 +61,8 @@ def no_result_response(state: KnowledgeQueryState) -> Command:
     )
 
 
-async def pre_retrieve(state: KnowledgeQueryState) -> Command:
+
+async def pre_retrieve(state: KnowledgeQueryState, config: RunnableConfig) -> Command:
     """对用户查询进行预处理"""
     # 空查询直接返回
     ids: List[int] = state.knowledgebase_ids
@@ -122,7 +79,7 @@ async def pre_retrieve(state: KnowledgeQueryState) -> Command:
     original_query: str = trim_question(origin_query)
 
     # 2. LLM重写查询
-    prompt_template: ChatPromptTemplate = await load_prompt("knowledgebase-query-rewrite")
+    prompt_template: ChatPromptTemplate = await load_prompt("knowledgebase-query-rewrite",has_short_memory(config))
     chain = prompt_template | llm
     try:
         response = await chain.ainvoke({"question": original_query})
@@ -216,7 +173,7 @@ def check_answer(answer: str) -> str:
         return NO_RESULT_RESPONSE
     return answer.strip()
 
-async def answer_question(state: KnowledgeQueryState) -> Command:
+async def answer_question(state: KnowledgeQueryState, config: RunnableConfig) -> Command:
     """根据用户提问的和RAG检索内容回答"""
 
     # 构建上下文，合并检索的文档
@@ -224,8 +181,8 @@ async def answer_question(state: KnowledgeQueryState) -> Command:
     context: str = "\n\n---\n\n".join(doc.page_content for doc in docs)
     logging.debug("检索到 {} 个相关文档片段", len(docs))
 
-    system_prompt: ChatPromptTemplate = await load_prompt("knowledgebase-query-system")
-    user_prompt: ChatPromptTemplate = await load_prompt("knowledgebase-query-user")
+    system_prompt: ChatPromptTemplate = await load_prompt("knowledgebase-query-system", has_short_memory(config))
+    user_prompt: ChatPromptTemplate = await load_prompt("knowledgebase-query-user", has_short_memory(config))
 
     chain = (system_prompt + user_prompt) | llm
     try:

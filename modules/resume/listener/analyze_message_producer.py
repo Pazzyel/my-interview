@@ -17,6 +17,7 @@ class AnalyzeTaskPayload:
     """简历分析任务载荷。"""
     resume_id: int
     content: str
+    retry_count: int = 0
 
 
 class AnalyzeMessageProducer(AbstractMessageProducer[AnalyzeTaskPayload]):
@@ -31,14 +32,15 @@ class AnalyzeMessageProducer(AbstractMessageProducer[AnalyzeTaskPayload]):
 
     # ────────── 公开 API ──────────
 
-    def send_analyze_task(self, resume_id: int, content: str) -> None:
+    def send_analyze_task(self, resume_id: int, content: str, retry_count: int = 0) -> None:
         """
         发送简历分析任务到 RocketMQ。
 
         :param resume_id: 简历 ID
         :param content:   简历文本内容
+        :param retry_count: 重试次数
         """
-        self.send_task(AnalyzeTaskPayload(resume_id=resume_id, content=content))
+        self.send_task(AnalyzeTaskPayload(resume_id=resume_id, content=content, retry_count=retry_count))
 
     # ────────── 抽象方法实现 ──────────
 
@@ -55,7 +57,7 @@ class AnalyzeMessageProducer(AbstractMessageProducer[AnalyzeTaskPayload]):
         return {
             "resumeId": payload.resume_id,
             "content": payload.content,
-            "retryCount": 0,
+            "retryCount": payload.retry_count,
         }
 
     def payload_identifier(self, payload: AnalyzeTaskPayload) -> str:
@@ -92,12 +94,7 @@ class AnalyzeMessageProducer(AbstractMessageProducer[AnalyzeTaskPayload]):
             )
             # DB 更新状态为错误
             async with async_session_factory() as db:
-                resume = await self._resume_repository.find_by_id(db, resume_id)
-                if resume is not None:
-                    resume.analyzeStatus = status
-                    if error is not None:
-                        resume.analyzeError = error[:500] if len(error) > 500 else error
-                    await self._resume_repository.save(db, resume)
+                await self._resume_repository.update_analyze_status(db, resume_id, status, error)
                 await db.commit()
         except Exception as e:
             logger.error("更新分析状态失败: resumeId=%s, error=%s", resume_id, str(e))

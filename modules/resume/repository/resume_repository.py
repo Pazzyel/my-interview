@@ -1,11 +1,12 @@
 import json
-from typing import Optional
+from typing import Dict, Optional
 
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, update, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from common.models import AsyncTaskStatus
 from infrastructure.database.models import ResumeORM, ResumeAnalysisORM
-from modules.resume.model.resume_entity import ResumeEntity, ResumeAnalysisResponse
+from modules.resume.model.resume_entity import ResumeEntity, ResumeAnalysisEntity, ResumeAnalysisResponse
 
 
 class ResumeRepository:
@@ -18,6 +19,13 @@ class ResumeRepository:
     """
     def __init__(self):
         pass
+
+    async def exists_by_id(self, db: AsyncSession, resume_id: int) -> bool:
+        """Check if resume exists by id."""
+        stmt = select(ResumeORM.id).where(ResumeORM.id == resume_id)
+        result = await db.execute(stmt)
+        orm_id: Optional[int] = result.scalar_one_or_none()
+        return orm_id is not None
 
     async def find_by_id(self, db: AsyncSession, resume_id: int) -> Optional[ResumeEntity]:
         """Find a resume by ID."""
@@ -49,6 +57,43 @@ class ResumeRepository:
         
         resume.id = new_resume_orm.id
         return resume
+
+    async def update_analyze_status(
+        self,
+        db: AsyncSession,
+        resume_id: int,
+        status: AsyncTaskStatus,
+        analyze_error: Optional[str],
+    ) -> bool:
+        """Update resume analyze status and error message."""
+        update_data: Dict[str, Optional[str] | AsyncTaskStatus] = {
+            "analyzeStatus": status,
+            "analyzeError": analyze_error,
+        }
+        stmt = update(ResumeORM).where(ResumeORM.id == resume_id).values(**update_data)
+        result = await db.execute(stmt)
+        row_count: int = int(result.rowcount or 0) # type: ignore
+        return row_count > 0
+
+    async def save_analysis(self, db: AsyncSession, analysis: ResumeAnalysisEntity) -> ResumeAnalysisEntity:
+        """Insert one resume analysis record."""
+        analysis_data: Dict[str, object] = {
+            "resume_id": analysis.resume_id,
+            "overallScore": analysis.overallScore,
+            "contentScore": analysis.contentScore,
+            "structureScore": analysis.structureScore,
+            "skillMatchScore": analysis.skillMatchScore,
+            "expressionScore": analysis.expressionScore,
+            "projectScore": analysis.projectScore,
+            "summary": analysis.summary,
+            "strengthsJson": analysis.strengthsJson,
+            "suggestionsJson": analysis.suggestionsJson,
+            "analyzedAt": analysis.analyzedAt,
+        }
+        insert_result = await db.execute(insert(ResumeAnalysisORM).values(**analysis_data))
+        analysis_id: int = int(insert_result.inserted_primary_key[0]) # type: ignore
+        analysis.id = analysis_id
+        return analysis
 
     async def get_latest_analysis_as_dto(self, db: AsyncSession, resume_id: int) -> Optional[ResumeAnalysisResponse]:
         """Fetch the latest analysis for a given resume ID."""
