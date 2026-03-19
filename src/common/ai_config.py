@@ -4,17 +4,18 @@ from langchain_community.embeddings import OpenAIEmbeddings
 
 
 class AIConfigProperties:
-    embeddings_model_name: str = "text-embedding-3-small"
+    embeddings_model_name: str = "text-embedding-v4"
     embeddings = OpenAIEmbeddings(
         model=embeddings_model_name,
-        api_key=os.environ["OPENAI_API_KEY"],
+        api_key=os.environ["DASHSCOPE_API_KEY"],
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
     )
     # 嵌入模型 API 批量大小限制
     MAX_BATCH_SIZE = 10
 
-    chat_model_name: str = "gpt-4o"
+    chat_model_name: str = "GLM-5"
     chat_api_key = os.environ["OPENAI_API_KEY"]
-    base_url = "https://api.openai.com/v1"
+    base_url = "https://api.edgefn.net/v1"
 
     short_query_length = 4
     mid_query_length = 12

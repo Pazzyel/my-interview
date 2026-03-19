@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, List, cast
 
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 
 from common.ai_config import ai_config

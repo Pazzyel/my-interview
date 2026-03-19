@@ -9,7 +9,7 @@ from langchain_core.prompts.chat import MessageLikeRepresentation, MessagesPlace
 from langchain_core.runnables import RunnableConfig
 
 current_dir = Path(__file__).parent
-root_dir = current_dir.parents[3]
+root_dir = current_dir.parents[2]
 prompt_cache: Dict[str, ChatPromptTemplate] = {} # 全局prompt缓存
 
 class Role(Enum):

@@ -4,7 +4,7 @@ import re
 from typing import Optional, List, AsyncGenerator, Annotated
 
 import regex
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain_core.documents import Document
 from langchain_core.messages import AnyMessage
 from langchain_core.prompts import ChatPromptTemplate
