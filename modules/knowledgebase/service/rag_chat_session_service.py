@@ -1,6 +1,6 @@
-import logging
 import json
-from typing import Any, AsyncGenerator, Dict, List, Optional
+import logging
+from typing import Any, AsyncGenerator, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 

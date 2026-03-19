@@ -1,11 +1,12 @@
 import json
 from typing import Any
 
-from sqlalchemy import delete, desc, select
+from sqlalchemy import delete, desc, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.exceptions import BusinessException, ErrorCode
 from infrastructure.database.models import InterviewAnswerORM, InterviewSessionORM
+from infrastructure.database.models import ResumeORM
 from modules.interview.model.interview_dto import InterviewAnswerDetailDTO, InterviewDetailDTO, InterviewHistoryItemDTO
 from modules.interview.model.interview_entity import InterviewSessionEntity, SessionStatus
 
@@ -15,6 +16,193 @@ class InterviewRepository:
     面试仓储层，负责面试会话与答案的数据库访问。
     Interview repository for interview sessions and answers.
     """
+
+    async def create_session(
+        self,
+        db: AsyncSession,
+        session_id: str,
+        resume_id: int,
+        total_questions: int,
+        questions_json: str,
+    ) -> None:
+        insert_data: dict[str, Any] = {
+            "session_id": session_id,
+            "resume_id": resume_id,
+            "total_questions": total_questions,
+            "current_question_index": 0,
+            "status": "CREATED",
+            "questions_json": questions_json,
+        }
+        await db.execute(insert(InterviewSessionORM).values(**insert_data))
+
+    async def update_session_status(self, db: AsyncSession, session_id: str, status: str) -> None:
+        update_data: dict[str, Any] = {"status": status}
+        await db.execute(
+            update(InterviewSessionORM)
+            .where(InterviewSessionORM.session_id == session_id)
+            .values(**update_data)
+        )
+
+    async def update_evaluate_status(
+        self,
+        db: AsyncSession,
+        session_id: str,
+        evaluate_status: str,
+        evaluate_error: str | None,
+    ) -> None:
+        update_data: dict[str, Any] = {
+            "evaluate_status": evaluate_status,
+            "evaluate_error": evaluate_error,
+        }
+        await db.execute(
+            update(InterviewSessionORM)
+            .where(InterviewSessionORM.session_id == session_id)
+            .values(**update_data)
+        )
+
+    async def update_session_questions_json(self, db: AsyncSession, session_id: str, questions_json: str) -> None:
+        await db.execute(
+            update(InterviewSessionORM)
+            .where(InterviewSessionORM.session_id == session_id)
+            .values(questions_json=questions_json)
+        )
+
+    async def update_session_progress(
+        self,
+        db: AsyncSession,
+        session_id: str,
+        current_question_index: int,
+        status: str,
+        questions_json: str,
+    ) -> None:
+        update_data: dict[str, Any] = {
+            "current_question_index": current_question_index,
+            "status": status,
+            "questions_json": questions_json,
+        }
+        await db.execute(
+            update(InterviewSessionORM)
+            .where(InterviewSessionORM.session_id == session_id)
+            .values(**update_data)
+        )
+
+    async def save_report(
+        self,
+        db: AsyncSession,
+        session_id: str,
+        overall_score: int,
+        overall_feedback: str,
+        strengths_json: str,
+        improvements_json: str,
+        reference_answers_json: str,
+    ) -> None:
+        update_data: dict[str, Any] = {
+            "overall_score": overall_score,
+            "overall_feedback": overall_feedback,
+            "strengths_json": strengths_json,
+            "improvements_json": improvements_json,
+            "reference_answers_json": reference_answers_json,
+        }
+        await db.execute(
+            update(InterviewSessionORM)
+            .where(InterviewSessionORM.session_id == session_id)
+            .values(**update_data)
+        )
+
+    async def upsert_answer(
+        self,
+        db: AsyncSession,
+        session_id: str,
+        question_index: int,
+        question: str,
+        category: str,
+        user_answer: str | None,
+        score: int | None,
+        feedback: str | None,
+        reference_answer: str | None,
+        key_points_json: str | None,
+    ) -> None:
+        """
+        中文：按 session_id 与 question_index 做答案记录的插入或更新。
+        English: Insert or update answer record by session_id and question_index.
+        """
+        # 关键步骤1：先解析会话主键，避免跨会话误更新
+        # Key step 1: resolve session PK first to avoid cross-session update.
+        session_stmt = select(InterviewSessionORM.id).where(InterviewSessionORM.session_id == session_id)
+        session_result = await db.execute(session_stmt)
+        session_pk_id: int | None = session_result.scalar_one_or_none()
+        if session_pk_id is None:
+            raise BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_FOUND, "面试会话不存在")
+
+        answer_stmt = (
+            select(InterviewAnswerORM)
+            .where(InterviewAnswerORM.session_pk_id == session_pk_id)
+            .where(InterviewAnswerORM.question_index == question_index)
+        )
+        answer_result = await db.execute(answer_stmt)
+        answer_orm: InterviewAnswerORM | None = answer_result.scalar_one_or_none()
+
+        update_data: dict[str, Any] = {
+            "question": question,
+            "category": category,
+            "user_answer": user_answer,
+            "score": score,
+            "feedback": feedback,
+            "reference_answer": reference_answer,
+            "key_points_json": key_points_json,
+        }
+
+        # 关键步骤2：不存在则插入，存在则更新
+        # Key step 2: insert on missing row, otherwise update.
+        if answer_orm is None:
+            update_data["session_pk_id"] = session_pk_id
+            update_data["question_index"] = question_index
+            await db.execute(insert(InterviewAnswerORM).values(**update_data))
+            return
+
+        await db.execute(
+            update(InterviewAnswerORM)
+            .where(InterviewAnswerORM.id == answer_orm.id)
+            .values(**update_data)
+        )
+
+    async def get_resume_text_by_session_id(self, db: AsyncSession, session_id: str) -> str:
+        stmt = (
+            select(ResumeORM.resumeText)
+            .join(InterviewSessionORM, InterviewSessionORM.resume_id == ResumeORM.id)
+            .where(InterviewSessionORM.session_id == session_id)
+        )
+        result = await db.execute(stmt)
+        resume_text: str | None = result.scalar_one_or_none()
+        return resume_text or ""
+
+    async def list_historical_questions_by_resume_id(self, db: AsyncSession, resume_id: int) -> list[str]:
+        """
+        中文：读取同一简历历史会话中的主问题，去重后返回有限数量。
+        English: Load historical main questions for the same resume, deduplicate,
+        and return a bounded list.
+        """
+        stmt = (
+            select(InterviewSessionORM.questions_json)
+            .where(InterviewSessionORM.resume_id == resume_id)
+            .order_by(desc(InterviewSessionORM.created_at))
+            .limit(10)
+        )
+        result = await db.execute(stmt)
+        question_json_list: list[str] = [item for item in result.scalars().all() if item]
+
+        questions: list[str] = []
+        seen: set[str] = set()
+        for question_json in question_json_list:
+            parsed_list: list[Any] = self._parse_json_array(question_json)
+            for item in parsed_list:
+                if isinstance(item, dict):
+                    question_text: str = str(item.get("question", "")).strip()
+                    is_follow_up: bool = bool(item.get("isFollowUp", False))
+                    if question_text != "" and not is_follow_up and question_text not in seen:
+                        seen.add(question_text)
+                        questions.append(question_text)
+        return questions[:30]
 
     async def find_by_resume_id(self, db: AsyncSession, resume_id: int) -> list[InterviewSessionEntity]:
         stmt = select(InterviewSessionORM).where(InterviewSessionORM.resume_id == resume_id).order_by(desc(InterviewSessionORM.created_at))

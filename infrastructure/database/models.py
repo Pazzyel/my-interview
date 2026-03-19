@@ -170,7 +170,7 @@ class RagChatMessageORM(Base):
     session_id: Mapped[int] = mapped_column(ForeignKey('rag_chat_sessions.id'), nullable=False, index=True)
     type: Mapped[str] = mapped_column(String(20), nullable=False) # 'USER' or 'ASSISTANT'
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    message_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    message_order: Mapped[int] = mapped_column(Integer, nullable=False) # 这个消息在会话里的序号
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
     completed: Mapped[bool] = mapped_column(Boolean, default=True)

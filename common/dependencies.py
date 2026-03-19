@@ -5,6 +5,10 @@ from infrastructure.file.file_validation_service import FileValidationService
 from modules.knowledgebase.listener.vectorize_message_consumer import VectorizeMessageConsumer
 from modules.knowledgebase.listener.vectorize_message_producer import VectorizeMessageProducer
 from modules.interview.repository.interview_repository import InterviewRepository
+from modules.interview.listener.evaluate_message_consumer import EvaluateMessageConsumer
+from modules.interview.listener.evaluate_message_producer import EvaluateMessageProducer
+from modules.interview.service.interview_agent_service import InterviewAgentService
+from modules.interview.service.interview_evaluate_consumer_service import InterviewEvaluateConsumerService
 from modules.interview.service.interview_history_service import InterviewHistoryService
 from modules.interview.service.interview_persistence_service import InterviewPersistenceService
 # ────── Knowledge Base imports ──────
@@ -44,6 +48,10 @@ resume_repository = ResumeRepository()
 interview_repository = InterviewRepository()
 interview_persistence_service = InterviewPersistenceService(interview_repository)
 interview_history_service = InterviewHistoryService(interview_repository)
+evaluate_message_producer = EvaluateMessageProducer(interview_repository)
+interview_agent_service = InterviewAgentService(interview_repository, evaluate_message_producer)
+interview_evaluate_consumer_service = InterviewEvaluateConsumerService(interview_agent_service, interview_repository)
+evaluate_message_consumer = EvaluateMessageConsumer(interview_evaluate_consumer_service, evaluate_message_producer)
 
 analyze_message_producer = AnalyzeMessageProducer(resume_repository)
 resume_grading_service = ResumeGradingService()

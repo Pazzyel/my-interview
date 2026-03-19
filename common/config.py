@@ -17,6 +17,9 @@ class AppConfigProperties(BaseSettings):
     rocketmq_max_retry_count: int = 3
     resume_analyze_topic: str = "resume-analyze-topic"
     resume_analyze_tag: str = "analyze"
+    interview_evaluate_topic: str = "interview-evaluate-topic"
+    interview_evaluate_tag: str = "evaluate"
+    interview_evaluate_consumer_group: str = "interview-evaluate-consumer-group"
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/interview_db"
     DB_URI = "mysql://mysql:mysql@localhost:3306/mysql" # 这是LangGraph checkpointer的保存点
 
