@@ -30,8 +30,9 @@ class VectorizeMessageConsumer:
 
     async def start(self) -> None:
         """
-        中文：启动 RocketMQ 知识库向量化消费者并注册消息回调。
-        English: Start RocketMQ consumer for knowledgebase vectorization and register callback.
+        启动 RocketMQ 知识库向量化消费者并注册消息回调。
+
+        Start RocketMQ consumer for knowledgebase vectorization and register callback.
 
         关键行为 / Key Behaviors:
         1) 记录主事件循环，供消费线程回调提交协程。

@@ -28,8 +28,9 @@ class AnalyzeMessageConsumer:
 
     async def start(self) -> None:
         """
-        中文：启动 RocketMQ 简历分析消费者并注册消息回调。
-        English: Start RocketMQ consumer for resume analysis and register callback.
+        启动 RocketMQ 简历分析消费者并注册消息回调。
+
+        Start RocketMQ consumer for resume analysis and register callback.
 
         关键行为 / Key Behaviors:
         1) 记录主事件循环，供消费者线程回调提交协程。

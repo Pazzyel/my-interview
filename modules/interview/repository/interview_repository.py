@@ -123,8 +123,9 @@ class InterviewRepository:
         key_points_json: str | None,
     ) -> None:
         """
-        中文：按 session_id 与 question_index 做答案记录的插入或更新。
-        English: Insert or update answer record by session_id and question_index.
+        按 session_id 与 question_index 做答案记录的插入或更新。
+
+        Insert or update answer record by session_id and question_index.
         """
         # 关键步骤1：先解析会话主键，避免跨会话误更新
         # Key step 1: resolve session PK first to avoid cross-session update.
@@ -178,8 +179,9 @@ class InterviewRepository:
 
     async def list_historical_questions_by_resume_id(self, db: AsyncSession, resume_id: int) -> list[str]:
         """
-        中文：读取同一简历历史会话中的主问题，去重后返回有限数量。
-        English: Load historical main questions for the same resume, deduplicate,
+        读取同一简历历史会话中的主问题，去重后返回有限数量。
+
+        Load historical main questions for the same resume, deduplicate,
         and return a bounded list.
         """
         stmt = (

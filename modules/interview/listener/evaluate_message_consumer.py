@@ -14,8 +14,9 @@ logger = logging.getLogger(__name__)
 
 class EvaluateMessageConsumer:
     """
-    中文：面试评估 RocketMQ 消费者。
-    English: RocketMQ consumer for interview evaluation tasks.
+    面试评估 RocketMQ 消费者。
+
+    RocketMQ consumer for interview evaluation tasks.
     """
 
     def __init__(

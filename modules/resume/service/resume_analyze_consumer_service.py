@@ -21,8 +21,9 @@ class ResumeAnalyzeConsumerService:
 
     async def process_task(self, resume_id: int, content: str) -> None:
         """
-        中文：处理单条简历分析任务，完整执行状态流转与结果落库。
-        English: Process one resume analysis task with full status transition and persistence.
+        处理单条简历分析任务，完整执行状态流转与结果落库。
+
+        Process one resume analysis task with full status transition and persistence.
 
         执行步骤 / Execution Steps:
         1) 检查简历是否存在，不存在则直接跳过。
@@ -37,14 +38,18 @@ class ResumeAnalyzeConsumerService:
         """
         # 1) pre-check and mark processing
         async with async_session_factory() as db:
-            exists: bool = await self._resume_repository.exists_by_id(db, resume_id)
-            if not exists:
-                logger.warning("Resume does not exist, skip analyze task: resumeId=%s", resume_id)
-                await db.commit()
-                return
+            try:
+                exists: bool = await self._resume_repository.exists_by_id(db, resume_id)
+                if not exists:
+                    logger.warning("Resume does not exist, skip analyze task: resumeId=%s", resume_id)
+                    await db.commit()
+                    return
 
-            await self._resume_repository.update_analyze_status(db, resume_id, AsyncTaskStatus.PROCESSING, None)
-            await db.commit()
+                await self._resume_repository.update_analyze_status(db, resume_id, AsyncTaskStatus.PROCESSING, None)
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
 
         # 2) analyze resume text
         analysis: ResumeAnalysisResponse = await self._resume_grading_service.analyze_resume(content)
@@ -67,15 +72,19 @@ class ResumeAnalyzeConsumerService:
         )
 
         async with async_session_factory() as db:
-            exists_after_analyze: bool = await self._resume_repository.exists_by_id(db, resume_id)
-            if not exists_after_analyze:
-                logger.warning("Resume deleted during analysis, skip saving: resumeId=%s", resume_id)
-                await db.commit()
-                return
+            try:
+                exists_after_analyze: bool = await self._resume_repository.exists_by_id(db, resume_id)
+                if not exists_after_analyze:
+                    logger.warning("Resume deleted during analysis, skip saving: resumeId=%s", resume_id)
+                    await db.commit()
+                    return
 
-            await self._resume_repository.save_analysis(db, analysis_entity)
-            await self._resume_repository.update_analyze_status(db, resume_id, AsyncTaskStatus.COMPLETED, None)
-            await db.commit()
+                await self._resume_repository.save_analysis(db, analysis_entity)
+                await self._resume_repository.update_analyze_status(db, resume_id, AsyncTaskStatus.COMPLETED, None)
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
 
         logger.info("Resume analysis completed: resumeId=%s, score=%s", resume_id, analysis.overallScore)
 
@@ -83,13 +92,17 @@ class ResumeAnalyzeConsumerService:
         """Mark resume analyze status as FAILED with truncated error message."""
         truncated_error: str = error_message[:500] if len(error_message) > 500 else error_message
         async with async_session_factory() as db:
-            await self._resume_repository.update_analyze_status(
-                db,
-                resume_id,
-                AsyncTaskStatus.FAILED,
-                truncated_error,
-            )
-            await db.commit()
+            try:
+                await self._resume_repository.update_analyze_status(
+                    db,
+                    resume_id,
+                    AsyncTaskStatus.FAILED,
+                    truncated_error,
+                )
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
 
     def _safe_strengths(self, strengths: List[str] | None) -> List[str]:
         """Normalize strengths into string list."""

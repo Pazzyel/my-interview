@@ -22,8 +22,9 @@ class EvaluateTaskPayload:
 
 class EvaluateMessageProducer(AbstractMessageProducer[EvaluateTaskPayload]):
     """
-    中文：面试评估任务生产者，负责将评估任务发送到 RocketMQ。
-    English: Interview evaluation task producer for sending evaluation jobs to RocketMQ.
+    面试评估任务生产者，负责将评估任务发送到 RocketMQ。
+
+    Interview evaluation task producer for sending evaluation jobs to RocketMQ.
     """
 
     def __init__(self, interview_repository: InterviewRepository) -> None:
@@ -68,18 +69,23 @@ class EvaluateMessageProducer(AbstractMessageProducer[EvaluateTaskPayload]):
         error: Optional[str],
     ) -> None:
         """
-        中文：发送失败时回写评估状态，避免任务丢失后状态无感知。
-        English: Update evaluation status when enqueue fails so the task failure is visible.
+        发送失败时回写评估状态，避免任务丢失后状态无感知。
+
+        Update evaluation status when enqueue fails so the task failure is visible.
         """
         try:
             async with async_session_factory() as db:
-                await self._interview_repository.update_evaluate_status(
-                    db,
-                    session_id,
-                    status.value,
-                    error,
-                )
-                await db.commit()
+                try:
+                    await self._interview_repository.update_evaluate_status(
+                        db,
+                        session_id,
+                        status.value,
+                        error,
+                    )
+                    await db.commit()
+                except Exception:
+                    await db.rollback()
+                    raise
         except Exception as exception:
             logger.error(
                 "更新面试评估状态失败: sessionId=%s, error=%s",

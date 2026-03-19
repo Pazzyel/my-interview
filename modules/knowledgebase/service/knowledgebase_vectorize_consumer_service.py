@@ -28,8 +28,9 @@ class KnowledgeBaseVectorizeConsumerService:
         kb_category: Optional[str],
     ) -> None:
         """
-        中文：处理单条知识库向量化任务，执行状态流转与向量存储。
-        English: Process one knowledgebase vectorization task with status transition and vector storage.
+        处理单条知识库向量化任务，执行状态流转与向量存储。
+
+        Process one knowledgebase vectorization task with status transition and vector storage.
 
         执行步骤 / Execution Steps:
         1) 检查知识库是否存在，不存在则直接跳过。
@@ -43,14 +44,18 @@ class KnowledgeBaseVectorizeConsumerService:
         """
         # 1) 查询知识库并标记处理中
         async with async_session_factory() as db:
-            kb_entity: Optional[KnowledgeBaseEntity] = await self._knowledgebase_repository.find_by_id(db, kb_id)
-            if kb_entity is None:
-                logger.warning("Knowledge base does not exist, skip vectorize task: kbId=%s", kb_id)
-                await db.commit()
-                return
+            try:
+                kb_entity: Optional[KnowledgeBaseEntity] = await self._knowledgebase_repository.find_by_id(db, kb_id)
+                if kb_entity is None:
+                    logger.warning("Knowledge base does not exist, skip vectorize task: kbId=%s", kb_id)
+                    await db.commit()
+                    return
 
-            await self._knowledgebase_repository.update_vector_status(db, kb_id, VectorStatus.PROCESSING, None)
-            await db.commit()
+                await self._knowledgebase_repository.update_vector_status(db, kb_id, VectorStatus.PROCESSING, None)
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
 
         # 2) 选择元信息（优先消息，回退数据库）
         final_kb_name: str = kb_name if kb_name is not None and kb_name.strip() != "" else kb_entity.name
@@ -68,8 +73,12 @@ class KnowledgeBaseVectorizeConsumerService:
 
         # 4) 标记成功
         async with async_session_factory() as db:
-            await self._knowledgebase_repository.update_vector_status(db, kb_id, VectorStatus.COMPLETED, None)
-            await db.commit()
+            try:
+                await self._knowledgebase_repository.update_vector_status(db, kb_id, VectorStatus.COMPLETED, None)
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
 
         logger.info("Knowledgebase vectorize completed: kbId=%s", kb_id)
 
@@ -77,10 +86,14 @@ class KnowledgeBaseVectorizeConsumerService:
         """Mark knowledgebase vectorize status as FAILED with truncated error message."""
         truncated_error: str = error_message[:500] if len(error_message) > 500 else error_message
         async with async_session_factory() as db:
-            await self._knowledgebase_repository.update_vector_status(
-                db,
-                kb_id,
-                VectorStatus.FAILED,
-                truncated_error,
-            )
-            await db.commit()
+            try:
+                await self._knowledgebase_repository.update_vector_status(
+                    db,
+                    kb_id,
+                    VectorStatus.FAILED,
+                    truncated_error,
+                )
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise

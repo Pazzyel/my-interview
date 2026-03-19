@@ -26,8 +26,9 @@ class ResumeGradingService:
 
     async def analyze_resume(self, resume_text: str) -> ResumeAnalysisResponse:
         """
-        中文：调用 LLM 分析简历并转换为系统内的评分 DTO。
-        English: Analyze resume content through LLM and map structured output to internal DTO.
+        调用 LLM 分析简历并转换为系统内的评分 DTO。
+
+        Analyze resume content through LLM and map structured output to internal DTO.
 
         流程说明 / Workflow:
         1) 读取系统与用户提示词，并注入 `resumeText` 变量。

@@ -229,8 +229,9 @@ class InterviewQuestionAgentService:
 
     async def _node_fallback_questions(self, state: InterviewQuestionGraphState) -> Command:
         """
-        中文：当 LLM 失败或输入无效时生成兜底题目，确保流程始终可继续。
-        English: Provide fallback questions when LLM fails or input is invalid,
+        当 LLM 失败或输入无效时生成兜底题目，确保流程始终可继续。
+
+        Provide fallback questions when LLM fails or input is invalid,
         ensuring interview flow remains available.
         """
         fallback_questions: list[InterviewQuestionDTO] = []

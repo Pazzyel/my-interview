@@ -35,24 +35,36 @@ class InterviewEvaluateConsumerService:
         3) 评估成功后状态由 generate_report 内部落库为 COMPLETED。
         """
         async with async_session_factory() as db:
-            session_entity = await self._interview_repository.find_by_session_id(db, session_id)
-            if session_entity is None:
-                logger.warning("会话不存在，跳过评估任务: sessionId=%s", session_id)
-                await db.commit()
-                return
+            try:
+                session_entity = await self._interview_repository.find_by_session_id(db, session_id)
+                if session_entity is None:
+                    logger.warning("会话不存在，跳过评估任务: sessionId=%s", session_id)
+                    await db.commit()
+                    return
+            except Exception:
+                await db.rollback()
+                raise
 
         async with async_session_factory() as db:
-            await self._interview_agent_service.generate_report(db, session_id)
-            await db.commit()
+            try:
+                await self._interview_agent_service.generate_report(db, session_id)
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
 
     async def mark_failed(self, session_id: str, error_message: str) -> None:
         """将评估任务标记为失败。"""
         truncated_error: str = error_message[:500] if len(error_message) > 500 else error_message
         async with async_session_factory() as db:
-            await self._interview_repository.update_evaluate_status(
-                db,
-                session_id,
-                AsyncTaskStatus.FAILED.value,
-                truncated_error,
-            )
-            await db.commit()
+            try:
+                await self._interview_repository.update_evaluate_status(
+                    db,
+                    session_id,
+                    AsyncTaskStatus.FAILED.value,
+                    truncated_error,
+                )
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise

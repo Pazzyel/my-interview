@@ -71,8 +71,12 @@ async def pre_retrieve(state: KnowledgeQueryState, config: RunnableConfig) -> Co
 
     # 0. 增加文档元数据里的计数
     async with async_session_factory() as db:
-        await knowledgebase_count_service.update_question_counts(db, state.knowledgebase_ids)
-        await db.commit()
+        try:
+            await knowledgebase_count_service.update_question_counts(db, state.knowledgebase_ids)
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
 
     # 1. 去掉空格
     origin_query: Optional[str] = state.origin_query

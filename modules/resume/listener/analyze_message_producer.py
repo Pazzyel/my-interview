@@ -94,7 +94,11 @@ class AnalyzeMessageProducer(AbstractMessageProducer[AnalyzeTaskPayload]):
             )
             # DB 更新状态为错误
             async with async_session_factory() as db:
-                await self._resume_repository.update_analyze_status(db, resume_id, status, error)
-                await db.commit()
+                try:
+                    await self._resume_repository.update_analyze_status(db, resume_id, status, error)
+                    await db.commit()
+                except Exception:
+                    await db.rollback()
+                    raise
         except Exception as e:
             logger.error("更新分析状态失败: resumeId=%s, error=%s", resume_id, str(e))
