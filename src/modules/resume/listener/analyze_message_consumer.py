@@ -1,10 +1,8 @@
-import asyncio
-import json
+from dataclasses import dataclass
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Coroutine, Optional
 
-from rocketmq.client import ConsumeStatus, PushConsumer
-
+from common.async_task.abstract_stream_consumer import AbstractStreamConsumer
 from common.config import app_config
 from modules.resume.listener.analyze_message_producer import AnalyzeMessageProducer
 from modules.resume.service.resume_analyze_consumer_service import ResumeAnalyzeConsumerService
@@ -12,7 +10,16 @@ from modules.resume.service.resume_analyze_consumer_service import ResumeAnalyze
 logger = logging.getLogger(__name__)
 
 
-class AnalyzeMessageConsumer:
+@dataclass
+class AnalyzeMessagePayload:
+    """简历分析消息载荷。"""
+
+    resume_id: int
+    content: str
+    retry_count: int
+
+
+class AnalyzeMessageConsumer(AbstractStreamConsumer[AnalyzeMessagePayload]):
     """Resume analyze RocketMQ consumer."""
 
     def __init__(
@@ -20,62 +27,23 @@ class AnalyzeMessageConsumer:
         resume_analyze_consumer_service: ResumeAnalyzeConsumerService,
         analyze_message_producer: AnalyzeMessageProducer,
     ) -> None:
+        super().__init__()
         self._resume_analyze_consumer_service: ResumeAnalyzeConsumerService = resume_analyze_consumer_service
         self._analyze_message_producer: AnalyzeMessageProducer = analyze_message_producer
-        self._consumer: Optional[PushConsumer] = None
-        self._main_loop: Optional[asyncio.AbstractEventLoop] = None
-        self._started: bool = False
 
-    async def start(self) -> None:
-        """
-        启动 RocketMQ 简历分析消费者并注册消息回调。
+    def consumer_display_name(self) -> str:
+        return "Resume analyze"
 
-        Start RocketMQ consumer for resume analysis and register callback.
+    def consumer_group(self) -> str:
+        return app_config.rocketmq_consumer_group
 
-        关键行为 / Key Behaviors:
-        1) 记录主事件循环，供消费者线程回调提交协程。
-        2) 绑定 NameServer 与 Topic/Tag。
-        3) 启动 PushConsumer 并记录状态。
-        """
-        if self._started:
-            return
+    def topic(self) -> str:
+        return app_config.resume_analyze_topic
 
-        self._main_loop = asyncio.get_running_loop()
-        consumer: PushConsumer = PushConsumer(app_config.rocketmq_consumer_group)
-        consumer.set_name_server_address(app_config.rocketmq_name_server)
-        consumer.subscribe(app_config.resume_analyze_topic, self._on_message, app_config.resume_analyze_tag)
-        consumer.start()
+    def tag(self) -> str:
+        return app_config.resume_analyze_tag
 
-        self._consumer = consumer
-        self._started = True
-        logger.info(
-            "Resume analyze consumer started: topic=%s, tag=%s, group=%s",
-            app_config.resume_analyze_topic,
-            app_config.resume_analyze_tag,
-            app_config.rocketmq_consumer_group,
-        )
-
-    async def shutdown(self) -> None:
-        """Shutdown consumer safely."""
-        if not self._started:
-            return
-
-        if self._consumer is not None:
-            self._consumer.shutdown()
-
-        self._consumer = None
-        self._started = False
-        logger.info("Resume analyze consumer stopped")
-
-    def _on_message(self, message: Any) -> ConsumeStatus:
-        """RocketMQ callback. Parse message and dispatch to async service."""
-        try:
-            raw_body: bytes = message.body
-            payload_dict: Dict[str, Any] = json.loads(raw_body.decode("utf-8"))
-        except Exception as error:
-            logger.error("Invalid analyze message body: %s", str(error), exc_info=True)
-            return ConsumeStatus.CONSUME_SUCCESS
-
+    def parse_payload(self, payload_dict: Any) -> Optional[AnalyzeMessagePayload]:
         resume_id_value: Any = payload_dict.get("resumeId")
         content_value: Any = payload_dict.get("content")
         retry_count_value: Any = payload_dict.get("retryCount", 0)
@@ -86,35 +54,25 @@ class AnalyzeMessageConsumer:
             retry_count: int = int(retry_count_value)
         except Exception:
             logger.warning("Analyze message missing required fields: %s", payload_dict)
-            return ConsumeStatus.CONSUME_SUCCESS
+            return None
 
         if content.strip() == "":
             logger.warning("Analyze message empty content, skip: resumeId=%s", resume_id)
-            return ConsumeStatus.CONSUME_SUCCESS
+            return None
 
-        try:
-            self._run_coroutine(self._resume_analyze_consumer_service.process_task(resume_id, content))
-            return ConsumeStatus.CONSUME_SUCCESS
-        except Exception as error:
-            error_message: str = f"Resume analyze failed: {str(error)}"
-            logger.error("Resume analyze task failed: resumeId=%s, error=%s", resume_id, str(error), exc_info=True)
+        return AnalyzeMessagePayload(resume_id=resume_id, content=content, retry_count=retry_count)
 
-            if retry_count < app_config.rocketmq_max_retry_count:
-                self._analyze_message_producer.send_analyze_task(resume_id, content, retry_count + 1)
-                logger.info(
-                    "Resume analyze task requeued: resumeId=%s, retryCount=%s",
-                    resume_id,
-                    retry_count + 1,
-                )
-                return ConsumeStatus.CONSUME_SUCCESS
+    def process_payload(self, payload: AnalyzeMessagePayload) -> Coroutine[Any, Any, None]:
+        return self._resume_analyze_consumer_service.process_task(payload.resume_id, payload.content)
 
-            self._run_coroutine(self._resume_analyze_consumer_service.mark_failed(resume_id, error_message))
-            return ConsumeStatus.CONSUME_SUCCESS
+    def requeue_payload(self, payload: AnalyzeMessagePayload, retry_count: int) -> None:
+        self._analyze_message_producer.send_analyze_task(payload.resume_id, payload.content, retry_count)
 
-    def _run_coroutine(self, coroutine: Any) -> Any:
-        """Run coroutine on the main loop from RocketMQ callback thread."""
-        if self._main_loop is None:
-            raise RuntimeError("Consumer event loop not initialized")
+    def mark_failed(self, payload: AnalyzeMessagePayload, error_message: str) -> Coroutine[Any, Any, None]:
+        return self._resume_analyze_consumer_service.mark_failed(payload.resume_id, error_message)
 
-        future = asyncio.run_coroutine_threadsafe(coroutine, self._main_loop)
-        return future.result()
+    def payload_retry_count(self, payload: AnalyzeMessagePayload) -> int:
+        return payload.retry_count
+
+    def payload_identifier(self, payload: AnalyzeMessagePayload) -> str:
+        return f"resumeId={payload.resume_id}"
