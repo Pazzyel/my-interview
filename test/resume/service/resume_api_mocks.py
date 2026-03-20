@@ -1,6 +1,5 @@
 import asyncio
 import sys
-import types
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -12,53 +11,15 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 REPO_TEST_ROOT = Path(__file__).resolve().parents[1] / "repository"
+SHARED_ROOT = PROJECT_ROOT / "test" / "shared"
 if str(REPO_TEST_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_TEST_ROOT))
+if str(SHARED_ROOT) not in sys.path:
+    sys.path.insert(0, str(SHARED_ROOT))
 
-# 该 Stub 替代了真实配置模块，避免测试导入阶段依赖生产环境配置与 Pydantic 配置模型。
-if "common.config" not in sys.modules:
-    config_stub = types.ModuleType("common.config")
-    config_stub.app_config = types.SimpleNamespace(
-        max_file_size_bytes=10 * 1024 * 1024,
-        allowed_types=["application/pdf"],
-    )
-    sys.modules["common.config"] = config_stub
+from api_test_fixture import create_sqlite_factory, install_import_safety_stubs
 
-# 该 Stub 替代了真实 MQ 生产者模块，避免 Windows 环境触发 rocketmq 客户端导入异常。
-if "modules.resume.listener.analyze_message_producer" not in sys.modules:
-    producer_stub = types.ModuleType("modules.resume.listener.analyze_message_producer")
-
-    class _AnalyzeMessageProducer:  # pragma: no cover
-        pass
-
-    producer_stub.AnalyzeMessageProducer = _AnalyzeMessageProducer
-    sys.modules["modules.resume.listener.analyze_message_producer"] = producer_stub
-
-# 该 Stub 替代了面试服务包导入入口，避免触发其 __init__ 中的 MQ 相关依赖。
-if "modules.interview.service" not in sys.modules:
-    interview_service_pkg = types.ModuleType("modules.interview.service")
-    interview_service_pkg.__path__ = []  # type: ignore[attr-defined]
-    sys.modules["modules.interview.service"] = interview_service_pkg
-
-if "modules.interview.service.interview_persistence_service" not in sys.modules:
-    persistence_stub = types.ModuleType("modules.interview.service.interview_persistence_service")
-
-    class _InterviewPersistenceService:  # pragma: no cover
-        pass
-
-    persistence_stub.InterviewPersistenceService = _InterviewPersistenceService
-    sys.modules["modules.interview.service.interview_persistence_service"] = persistence_stub
-
-# 该 Stub 替代了真实文件基础设施模块（仅用于类型导入），避免加载外部 SDK 依赖。
-for _module_name, _class_name in [
-    ("infrastructure.file.file_storage_service", "FileStorageService"),
-    ("infrastructure.file.file_hash_service", "FileHashService"),
-    ("infrastructure.file.file_validation_service", "FileValidationService"),
-]:
-    if _module_name not in sys.modules:
-        _stub = types.ModuleType(_module_name)
-        _stub.__dict__[_class_name] = type(_class_name, (), {})
-        sys.modules[_module_name] = _stub
+install_import_safety_stubs()
 
 from common.models import AsyncTaskStatus
 from modules.interview.repository.interview_repository import InterviewRepository
@@ -206,8 +167,7 @@ async def _seed_initial_data(
 
 
 def create_resume_api_test_context() -> ResumeApiTestContext:
-    sqlite_factory = InMemorySqliteSessionFactory()
-    asyncio.run(sqlite_factory.init())
+    sqlite_factory = create_sqlite_factory()
 
     resume_repository = ResumeRepository()
     interview_repository = InterviewRepository()

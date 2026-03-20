@@ -1,8 +1,14 @@
 # Mock
 
+Mock的对象应该尽可能少，尽可能底层
+
+如果是Mock了自己编写的类，可能需要有单独的测试
+
 需要被 mock 替换的功能有：
 
 ## 1) 数据库读写（SQLAlchemy AsyncSession）
+
+推荐直接用轻量内存数据库sqlite
 
 ### 建议 mock 的函数/对象
 - `infrastructure.database.connection.get_async_session`
@@ -21,6 +27,8 @@
 ---
 
 ## 2) RustFS 存储（FileStorageService）
+
+建议直接写一个FakeFileStorageService
 
 ### 建议 mock 的函数
 - `FileStorageService._create_s3_client`
@@ -46,6 +54,8 @@
 
 ## 3) RocketMQ 生产者
 
+建议直接写FakeAbstractMessageProducer，Windows平台需要防止RocketMQ的实际包导入
+
 ### 抽象生产者（公共入口）
 - `common.async_task.abstract_message_producer.AbstractMessageProducer.send_task`
 - `common.async_task.abstract_message_producer.AbstractMessageProducer.shutdown`
@@ -68,6 +78,10 @@
 ---
 
 ## 4) ElasticSearch 向量库（vector_store）
+
+建议使用轻量内存数据库chromaDB，这个类只需要更换数据源
+
+当前的vector_store耦合度比较高，可能需要整体替换？
 
 ### 建议 mock 的函数
 - `infrastructure.vector.vector_store.vector_store`（可整体替换成 AsyncMock 对象）
