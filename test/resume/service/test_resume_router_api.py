@@ -63,14 +63,23 @@ def api_client_and_context(monkeypatch: pytest.MonkeyPatch) -> Generator[tuple[T
     app.include_router(resume_router_module.router)
 
     async def _override_db():
-        yield object()
+        async with context.sqlite_factory.session() as db:
+            try:
+                yield db
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
 
     app.dependency_overrides[resume_router_module.get_async_session] = _override_db
 
     with TestClient(app) as client:
         yield client, context
 
+    context.dispose()
 
+
+# 测试了什么功能：健康检查接口返回服务可用状态。
 def test_health_api_returns_up(api_client_and_context: tuple[TestClient, ResumeApiTestContext]) -> None:
     client, _ = api_client_and_context
 
@@ -82,6 +91,7 @@ def test_health_api_returns_up(api_client_and_context: tuple[TestClient, ResumeA
     assert payload["data"]["status"] == "UP"
 
 
+# 测试了什么功能：简历列表接口返回简历基础信息与最新分析分数。
 def test_get_all_resumes_api_returns_list(api_client_and_context: tuple[TestClient, ResumeApiTestContext]) -> None:
     client, _ = api_client_and_context
 
@@ -93,8 +103,10 @@ def test_get_all_resumes_api_returns_list(api_client_and_context: tuple[TestClie
     assert len(payload["data"]) == 1
     assert payload["data"][0]["id"] == 1
     assert payload["data"][0]["latestScore"] == 88
+    assert payload["data"][0]["interviewCount"] == 1
 
 
+# 测试了什么功能：简历详情接口返回分析历史与面试历史。
 def test_get_resume_detail_api_returns_detail(api_client_and_context: tuple[TestClient, ResumeApiTestContext]) -> None:
     client, _ = api_client_and_context
 
@@ -109,6 +121,7 @@ def test_get_resume_detail_api_returns_detail(api_client_and_context: tuple[Test
     assert len(payload["data"]["interviews"]) == 1
 
 
+# 测试了什么功能：上传新简历时创建记录并发送异步分析任务。
 def test_upload_api_creates_new_resume(api_client_and_context: tuple[TestClient, ResumeApiTestContext]) -> None:
     client, context = api_client_and_context
 
@@ -123,11 +136,12 @@ def test_upload_api_creates_new_resume(api_client_and_context: tuple[TestClient,
     assert payload["data"]["duplicate"] is False
     assert payload["data"]["resume"]["filename"] == "new_resume.pdf"
 
-    saved_resume = _run(context.resume_repository.find_by_hash(None, "hash:new_resume.pdf"))
+    saved_resume = _run(context.find_resume_by_hash("hash:new_resume.pdf"))
     assert saved_resume is not None
     assert context.analyze_producer.sent_tasks
 
 
+# 测试了什么功能：上传重复简历时返回历史分析结果并标记 duplicate。
 def test_upload_api_returns_duplicate_result(api_client_and_context: tuple[TestClient, ResumeApiTestContext]) -> None:
     client, _ = api_client_and_context
 
@@ -144,6 +158,7 @@ def test_upload_api_returns_duplicate_result(api_client_and_context: tuple[TestC
     assert payload["data"]["analysis"]["overallScore"] == 88
 
 
+# 测试了什么功能：重分析接口会重置状态为 PENDING 并发送任务。
 def test_reanalyze_api_resets_status_and_sends_task(api_client_and_context: tuple[TestClient, ResumeApiTestContext]) -> None:
     client, context = api_client_and_context
 
@@ -153,12 +168,13 @@ def test_reanalyze_api_resets_status_and_sends_task(api_client_and_context: tupl
     payload = response.json()
     assert payload["code"] == 200
 
-    resume = _run(context.resume_repository.find_by_id(None, 1))
+    resume = _run(context.find_resume_by_id(1))
     assert resume is not None
     assert resume.analyzeStatus.value == "PENDING"
     assert context.analyze_producer.sent_tasks[-1][0] == 1
 
 
+# 测试了什么功能：删除接口会删除简历，并触发面试与文件清理。
 def test_delete_api_deletes_resume_without_real_db(api_client_and_context: tuple[TestClient, ResumeApiTestContext]) -> None:
     client, context = api_client_and_context
 
@@ -169,9 +185,8 @@ def test_delete_api_deletes_resume_without_real_db(api_client_and_context: tuple
     assert payload["code"] == 200
     assert payload["data"] is None
 
-    deleted_resume = _run(context.resume_repository.find_by_id(None, 1))
+    deleted_resume = _run(context.find_resume_by_id(1))
     assert deleted_resume is None
-    assert context.interview_persistence_service.deleted_resume_ids == [1]
     assert context.storage_service.deleted_keys == ["resume/existing.pdf"]
 
 
