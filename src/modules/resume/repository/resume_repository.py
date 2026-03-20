@@ -22,6 +22,7 @@ class ResumeRepository:
 
     async def exists_by_id(self, db: AsyncSession, resume_id: int) -> bool:
         """Check if resume exists by id."""
+        # "SELECT id FROM resumes WHERE id = #{resume_id}"
         stmt = select(ResumeORM.id).where(ResumeORM.id == resume_id)
         result = await db.execute(stmt)
         orm_id: Optional[int] = result.scalar_one_or_none()
@@ -29,6 +30,7 @@ class ResumeRepository:
 
     async def find_by_id(self, db: AsyncSession, resume_id: int) -> Optional[ResumeEntity]:
         """Find a resume by ID."""
+        # "SELECT * FROM resumes WHERE id = #{resume_id}"
         stmt = select(ResumeORM).where(ResumeORM.id == resume_id)
         result = await db.execute(stmt)
         orm_obj = result.scalar_one_or_none()
@@ -39,6 +41,7 @@ class ResumeRepository:
 
     async def find_by_hash(self, db: AsyncSession, file_hash: str) -> Optional[ResumeEntity]:
         """Find an existing resume by file hash."""
+        # "SELECT * FROM resumes WHERE file_hash = #{file_hash}"
         stmt = select(ResumeORM).where(ResumeORM.fileHash == file_hash)
         result = await db.execute(stmt)
         orm_obj = result.scalar_one_or_none()
@@ -49,6 +52,7 @@ class ResumeRepository:
 
     async def find_all_ordered(self, db: AsyncSession) -> list[ResumeEntity]:
         """Find all resumes ordered by upload time desc."""
+        # "SELECT * FROM resumes ORDER BY upload_at DESC"
         stmt = select(ResumeORM).order_by(desc(ResumeORM.uploadedAt))
         result = await db.execute(stmt)
         orm_list: list[ResumeORM] = list(result.scalars().all())
@@ -57,8 +61,8 @@ class ResumeRepository:
     async def save(self, db: AsyncSession, resume: ResumeEntity) -> ResumeEntity:
         """Insert a new resume record."""
         # Convert pure data model to ORM model
-        new_resume_orm = self.to_resume_orm(resume)
-        
+        new_resume_orm: ResumeORM = self.to_resume_orm(resume)
+        # "INSERT INTO resumes VALUES (...)"
         db.add(new_resume_orm)
         await db.flush() # Flush to get the generated ID
         
@@ -77,6 +81,7 @@ class ResumeRepository:
             "analyzeStatus": status,
             "analyzeError": analyze_error,
         }
+        # "UPDATE resumes SET analyze_status = #{status}, analyze_error = #{analyze_error} WHERE id = #{resume_id}"
         stmt = update(ResumeORM).where(ResumeORM.id == resume_id).values(**update_data)
         result = await db.execute(stmt)
         row_count: int = int(result.rowcount or 0) # type: ignore
@@ -84,6 +89,7 @@ class ResumeRepository:
 
     async def save_analysis(self, db: AsyncSession, analysis: ResumeAnalysisEntity) -> ResumeAnalysisEntity:
         """Insert one resume analysis record."""
+        # "INSERT INTO resumes VALUES (...)
         analysis_data: Dict[str, object] = {
             "resume_id": analysis.resume_id,
             "overallScore": analysis.overallScore,
@@ -104,6 +110,7 @@ class ResumeRepository:
 
     async def find_analyses_by_resume_id(self, db: AsyncSession, resume_id: int) -> list[ResumeAnalysisEntity]:
         """Find all analyses by resume id ordered by analyzed time desc."""
+        # "SELECT * FROM resumes WHERE id = #{resume_id} ORDER BY analyzed_at DESC"
         stmt = (
             select(ResumeAnalysisORM)
             .where(ResumeAnalysisORM.resume_id == resume_id)
@@ -115,6 +122,7 @@ class ResumeRepository:
 
     async def get_latest_analysis_as_dto(self, db: AsyncSession, resume_id: int) -> Optional[ResumeAnalysisResponse]:
         """Fetch the latest analysis for a given resume ID."""
+        # "SELECT * FROM resumes WHERE id = #{resume_id} ORDER BY analyzed_at DESC LIMIT 1"
         stmt = (
             select(ResumeAnalysisORM)
             .where(ResumeAnalysisORM.resume_id == resume_id)
@@ -144,6 +152,8 @@ class ResumeRepository:
 
     async def delete_by_id(self, db: AsyncSession, resume_id: int) -> None:
         """Delete resume analysis records then resume itself."""
+        # ”DELETE resume_analyses WHERE resume_id = #{resume_id}
+        # "DELETE resumes WHERE resume_id = #{resume_id}
         await db.execute(delete(ResumeAnalysisORM).where(ResumeAnalysisORM.resume_id == resume_id))
         await db.execute(delete(ResumeORM).where(ResumeORM.id == resume_id))
 
