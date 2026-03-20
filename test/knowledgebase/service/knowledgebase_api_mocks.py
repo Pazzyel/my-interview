@@ -63,7 +63,18 @@ class MockKnowledgeBaseListService:
         self.list_by_category = AsyncMock(return_value=[])
         self.update_category = AsyncMock(return_value=None)
         self.search = AsyncMock(return_value=[])
-        self.get_knowledge_base = AsyncMock(return_value=None)
+        self.get_knowledge_base = AsyncMock(return_value=KnowledgeBaseListItemDTO(
+                    id=99999,
+                    name="Java 基础",
+                    category="后端",
+                    originalFilename="python.pdf",
+                    fileSize=2048,
+                    uploadedAt=datetime.now(),
+                    accessCount=2,
+                    questionCount=3,
+                    vectorStatus=VectorStatus.COMPLETED,
+                    vectorError=None,
+                ))
         self.get_entity_for_download = AsyncMock(return_value=None)
         self.download_file = AsyncMock(return_value=b"")
 
