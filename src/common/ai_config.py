@@ -1,13 +1,14 @@
 import os
 
-from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
+from pydantic import SecretStr
 
 
 class AIConfigProperties:
     embeddings_model_name: str = "text-embedding-v4"
     embeddings = OpenAIEmbeddings(
         model=embeddings_model_name,
-        api_key=os.environ["DASHSCOPE_API_KEY"],
+        api_key=SecretStr(os.environ["DASHSCOPE_API_KEY"]),
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
     )
     # 嵌入模型 API 批量大小限制

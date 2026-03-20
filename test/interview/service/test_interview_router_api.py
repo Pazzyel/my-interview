@@ -76,3 +76,86 @@ def test_get_current_question_api_returns_question(api_client_and_context: tuple
     assert payload["data"]["completed"] is False
     assert payload["data"]["question"]["questionIndex"] == 1
     assert context.interview_agent_service.get_current_question.await_count == 1
+
+
+# 测试了什么功能：获取会话信息接口会调用 agent_service 并返回。
+def test_get_session(api_client_and_context: tuple[TestClient, InterviewApiTestContext]) -> None:
+    client, context = api_client_and_context
+    response = client.get("/api/interview/sessions/session-1")
+    assert response.status_code == 200
+    assert response.json()["code"] == 200
+    assert context.interview_agent_service.get_session.await_count == 1
+
+
+# 测试了什么功能：提交答案接口调用 submit_answer，验证是否有下一题流转。
+def test_submit_answer(api_client_and_context: tuple[TestClient, InterviewApiTestContext]) -> None:
+    client, context = api_client_and_context
+    response = client.post("/api/interview/sessions/session-1/answers", json={"questionIndex": 0, "answer": "test text"})
+    assert response.status_code == 200
+    assert response.json()["code"] == 200
+    assert context.interview_agent_service.submit_answer.await_count == 1
+
+
+# 测试了什么功能：保存草稿答案接口调用 save_answer。
+def test_save_answer(api_client_and_context: tuple[TestClient, InterviewApiTestContext]) -> None:
+    client, context = api_client_and_context
+    response = client.put("/api/interview/sessions/session-1/answers", json={"questionIndex": 0, "answer": "test text"})
+    assert response.status_code == 200
+    assert response.json()["code"] == 200
+    assert context.interview_agent_service.save_answer.await_count == 1
+
+
+# 测试了什么功能：结束面试接口，调用 agent_service.complete_interview()。
+def test_complete_interview(api_client_and_context: tuple[TestClient, InterviewApiTestContext]) -> None:
+    client, context = api_client_and_context
+    response = client.post("/api/interview/sessions/session-1/complete")
+    assert response.status_code == 200
+    assert response.json()["code"] == 200
+    assert context.interview_agent_service.complete_interview.await_count == 1
+
+
+# 测试了什么功能：生成总体报告接口。
+def test_get_report(api_client_and_context: tuple[TestClient, InterviewApiTestContext]) -> None:
+    client, context = api_client_and_context
+    response = client.get("/api/interview/sessions/session-1/report")
+    assert response.status_code == 200
+    assert response.json()["code"] == 200
+    assert context.interview_agent_service.generate_report.await_count == 1
+
+
+# 测试了什么功能：查询未完成的历史会话。
+def test_find_unfinished_session(api_client_and_context: tuple[TestClient, InterviewApiTestContext]) -> None:
+    client, context = api_client_and_context
+    response = client.get("/api/interview/sessions/unfinished/1")
+    assert response.status_code == 200
+    assert response.json()["code"] == 200
+    assert context.interview_persistence_service.find_unfinished_session_or_throw.await_count == 1
+
+
+# 测试了什么功能：获取历史详情数据接口。
+def test_get_interview_detail(api_client_and_context: tuple[TestClient, InterviewApiTestContext]) -> None:
+    client, context = api_client_and_context
+    response = client.get("/api/interview/sessions/session-1/details")
+    assert response.status_code == 200
+    assert response.json()["code"] == 200
+    assert context.interview_history_service.get_interview_detail.await_count == 1
+
+
+# 测试了什么功能：删除面试记录。
+def test_delete_interview(api_client_and_context: tuple[TestClient, InterviewApiTestContext]) -> None:
+    client, context = api_client_and_context
+    response = client.delete("/api/interview/sessions/session-1")
+    assert response.status_code == 200
+    assert response.json()["code"] == 200
+    assert context.interview_persistence_service.delete_session_by_session_id.await_count == 1
+
+
+# 测试了什么功能：测试 PDF 下载导出返回字节流的情况，附带 content-type header 测试。
+def test_export_report_pdf(api_client_and_context: tuple[TestClient, InterviewApiTestContext]) -> None:
+    client, context = api_client_and_context
+    response = client.get("/api/interview/sessions/session-1/export")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert "attachment; filename" in response.headers["content-disposition"]
+    assert context.interview_agent_service.export_report_pdf.await_count == 1
+

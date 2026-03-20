@@ -10,11 +10,14 @@ from starlette.responses import StreamingResponse
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = PROJECT_ROOT / "src"
 REPO_TEST_ROOT = PROJECT_ROOT / "test" / "resume" / "repository"
+SHARED_TEST_ROOT = PROJECT_ROOT / "test" / "shared"
 
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 if str(REPO_TEST_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_TEST_ROOT))
+if str(SHARED_TEST_ROOT) not in sys.path:
+    sys.path.insert(0, str(SHARED_TEST_ROOT))
 
 from resume_repository_mocks import InMemorySqliteSessionFactory
 
@@ -55,19 +58,10 @@ def install_import_safety_stubs() -> None:
         producer_stub.AnalyzeMessageProducer = _AnalyzeMessageProducer
         sys.modules["modules.resume.listener.analyze_message_producer"] = producer_stub
 
-    if "modules.interview.service" not in sys.modules:
-        interview_service_pkg = types.ModuleType("modules.interview.service")
-        interview_service_pkg.__path__ = []  # type: ignore[attr-defined]
-        sys.modules["modules.interview.service"] = interview_service_pkg
+    # Removed modules.interview.service stub block so the services can be tested
 
-    if "modules.interview.service.interview_persistence_service" not in sys.modules:
-        persistence_stub = types.ModuleType("modules.interview.service.interview_persistence_service")
-
-        class _InterviewPersistenceService:  # pragma: no cover
-            pass
-
-        persistence_stub.InterviewPersistenceService = _InterviewPersistenceService
-        sys.modules["modules.interview.service.interview_persistence_service"] = persistence_stub
+    # Removed interview_persistence_service stub so it can be unit tested
+    # The true module has no heavy side effects on import.
 
     for module_name, class_name in [
         ("infrastructure.file.file_storage_service", "FileStorageService"),
