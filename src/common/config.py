@@ -22,8 +22,8 @@ class AppConfigProperties(BaseSettings):
     interview_evaluate_topic: str = "interview-evaluate-topic"
     interview_evaluate_tag: str = "evaluate"
     interview_evaluate_consumer_group: str = "interview-evaluate-consumer-group"
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/interview_db"
-    DB_URI = "mysql://mysql:mysql@localhost:3306/mysql" # 这是LangGraph checkpointer的保存点
+    database_url: str = "mysql+aiomysql://root:123@localhost:3308/interview"
+    DB_URI: str = "mysql+aiomysql://root:123@localhost:3308/checkpointer" # 这是LangGraph checkpointer的保存点
 
     # RustFS (S3 compatible) config
     rustfs_endpoint_url: str = "http://localhost:9000"

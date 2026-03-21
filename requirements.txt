@@ -1,0 +1,24 @@
+# Runtime dependencies (from src imports)
+aioboto3
+aiofile
+botocore
+fastapi
+langchain-core
+langchain-elasticsearch
+langchain-openai
+langchain-text-splitters
+langgraph
+pydantic
+pydantic-settings
+pypinyin
+regex
+rocketmq-client-python
+sqlalchemy
+tiktoken
+unstructured
+uvicorn
+PyYAML
+
+# Test dependencies (from test imports)
+pytest
+starlette
