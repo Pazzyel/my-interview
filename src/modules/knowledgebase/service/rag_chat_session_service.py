@@ -161,7 +161,7 @@ class RagChatSessionService:
 
         logging.info("完成流式消息: messageId={}, contentLength={}", message_id, len(content))
 
-    async def get_stream_answer(self, db: AsyncSession, session_id: int, question: str) -> AsyncGenerator[str]:
+    async def get_stream_answer(self, db: AsyncSession, session_id: int, question: str) -> AsyncGenerator[str, None]:
         """读取会话绑定知识库并返回流式回答。"""
         session_entity: Optional[RagChatSessionEntity] = await self.rag_chat_session_repository.get_session_by_id(db, session_id)
         if session_entity is None:
@@ -179,7 +179,7 @@ class RagChatSessionService:
         db: AsyncSession,
         session_id: int,
         question: str,
-    ) -> AsyncGenerator[str]:
+    ) -> AsyncGenerator[str, None]:
         """
         完成“预落库 -> 流式输出 -> 回写消息”
 

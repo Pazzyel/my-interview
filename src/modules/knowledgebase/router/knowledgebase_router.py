@@ -187,7 +187,7 @@ async def query_knowledge_base(
     data: QueryResponse = await knowledgebase_query_service.query_knowledge_base(db, request)
     return Result.success(data=data)
 
-@router.post("/query/stream", response_model=StreamingResponse)
+@router.post("/query/stream", response_model=None) # 注意：流式接口不使用统一响应模型，因为会被当成Pydantic模型解析，导致无法正确处理流式数据
 async def query_knowledge_base_stream(
     request: QueryRequest,
 ):

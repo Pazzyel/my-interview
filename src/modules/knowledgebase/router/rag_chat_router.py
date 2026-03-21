@@ -82,12 +82,12 @@ async def delete_session(
     return Result.success(data=None)
 
 
-@router.post("/sessions/{session_id}/messages/stream", response_model=StreamingResponse)
+@router.post("/sessions/{session_id}/messages/stream", response_model=None)
 async def send_message_stream(
     session_id: int,
     request: SendMessageRequest,
     db: AsyncSession = Depends(get_async_session),
-) -> StreamingResponse:
+):
     return StreamingResponse(
         rag_chat_session_service.send_message_stream(db, session_id, request.question),
         media_type="text/event-stream",
