@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.mysql.aio import AIOMySQLSaver
 
 from common.config import app_config
@@ -69,6 +70,21 @@ async def global_exception_handler(request: Request, exc: Exception):
         }
     )
 
+origins = [
+    # 如果你还有其他前端地址，可以继续往这里加
+    "http://localhost:5173",
+]
+
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8083, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8072, reload=True)

@@ -2,7 +2,9 @@ import json
 import logging
 import threading
 from abc import ABC, abstractmethod
-from typing import TypeVar, Generic, Dict, Any, Optional, ClassVar
+from typing import TypeVar, Generic, Dict, Any, Optional, ClassVar, Coroutine
+
+import asyncio
 
 from rocketmq.client import Producer, Message
 
@@ -86,6 +88,29 @@ class AbstractMessageProducer(ABC, Generic[T]):
         if error is None:
             return None
         return error[:max_length] if len(error) > max_length else error
+
+    def run_coroutine_safely(self, coroutine: Coroutine[Any, Any, None]) -> None:
+        """
+        在同步上下文中安全执行协程。
+
+        - 若当前线程已有事件循环：使用 create_task 调度，避免 RuntimeError。
+        - 若当前线程没有事件循环：使用 asyncio.run 同步执行。
+        """
+        try:
+            running_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(coroutine)
+            return
+
+        task = running_loop.create_task(coroutine)
+
+        def _log_task_exception(done_task: asyncio.Task[Any]) -> None:
+            try:
+                done_task.result()
+            except Exception as exception:
+                logger.error("异步失败回调执行异常: %s", str(exception), exc_info=True)
+
+        task.add_done_callback(_log_task_exception)
 
     def shutdown(self) -> None:
         """关闭生产者，释放资源。"""

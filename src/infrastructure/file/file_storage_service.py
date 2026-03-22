@@ -108,7 +108,7 @@ class FileStorageService:
         await self.ensure_bucket_exists()
         try:
             async with self._create_s3_client() as s3_client:
-                url: str = s3_client.generate_presigned_url(
+                url: str = await s3_client.generate_presigned_url(
                     'get_object',
                     Params={
                         'Bucket': self.bucket_name,

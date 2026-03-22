@@ -24,7 +24,7 @@ async def upload_and_analyze(
 
     Upload a resume file and trigger analysis.
     """
-    logger.info("Uploading resume...")
+    logger.info("Request arrived: POST /api/resumes/upload")
     result_data = await resume_upload_service.upload_and_analyze(db, file)
     
     is_duplicate = result_data.get("duplicate", False)
@@ -38,6 +38,7 @@ async def upload_and_analyze(
 async def get_all_resumes(
     db: AsyncSession = Depends(get_async_session),
 ) -> Result[list[ResumeListItemDTO]]:
+    logger.info("Request arrived: GET /api/resumes")
     resumes: list[ResumeListItemDTO] = await resume_history_service.get_all_resumes(db)
     return Result.success(data=resumes)
 
@@ -47,6 +48,7 @@ async def get_resume_detail(
     resume_id: int,
     db: AsyncSession = Depends(get_async_session),
 ) -> Result[ResumeDetailDTO]:
+    logger.info("Request arrived: GET /api/resumes/%s/detail", resume_id)
     detail: ResumeDetailDTO = await resume_history_service.get_resume_detail(db, resume_id)
     return Result.success(data=detail)
 
@@ -56,6 +58,7 @@ async def delete_resume(
     resume_id: int,
     db: AsyncSession = Depends(get_async_session),
 ) -> Result[None]:
+    logger.info("Request arrived: DELETE /api/resumes/%s", resume_id)
     await resume_delete_service.delete_resume(db, resume_id)
     return Result.success(data=None)
 
@@ -65,6 +68,7 @@ async def reanalyze(
     resume_id: int,
     db: AsyncSession = Depends(get_async_session),
 ) -> Result[None]:
+    logger.info("Request arrived: POST /api/resumes/%s/reanalyze", resume_id)
     await resume_upload_service.reanalyze(db, resume_id)
     return Result.success(data=None)
 
@@ -74,6 +78,7 @@ async def health() -> Result[Dict[str, str]]:
     Health check endpoint
     Equivalent to Java: ResumeController.health
     """
+    logger.info("Request arrived: GET /api/resumes/health")
     return Result.success(data={
         "status": "UP",
         "service": "AI Interview Platform - Resume Service (Python API)"

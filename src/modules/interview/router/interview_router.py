@@ -1,3 +1,4 @@
+import logging
 import urllib.parse
 
 from fastapi import APIRouter, Depends
@@ -18,6 +19,8 @@ from modules.interview.model.interview_agent_dto import (
 from modules.interview.model.interview_dto import InterviewDetailDTO
 from modules.interview.model.interview_entity import InterviewSessionEntity
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/interview", tags=["Interview"])
 
 
@@ -26,6 +29,7 @@ async def create_session(
     request: CreateInterviewRequest,
     db: AsyncSession = Depends(get_async_session),
 ) -> Result[InterviewSessionDTO]:
+    logger.info("Request arrived: POST /api/interview/sessions")
     session: InterviewSessionDTO = await interview_agent_service.create_session(db, request)
     return Result.success(data=session)
 
@@ -35,6 +39,7 @@ async def get_session(
     session_id: str,
     db: AsyncSession = Depends(get_async_session),
 ) -> Result[InterviewSessionDTO]:
+    logger.info("Request arrived: GET /api/interview/sessions/%s", session_id)
     session: InterviewSessionDTO = await interview_agent_service.get_session(db, session_id)
     return Result.success(data=session)
 
@@ -44,6 +49,7 @@ async def get_current_question(
     session_id: str,
     db: AsyncSession = Depends(get_async_session),
 ) -> Result[CurrentQuestionResponse]:
+    logger.info("Request arrived: GET /api/interview/sessions/%s/question", session_id)
     response: CurrentQuestionResponse = await interview_agent_service.get_current_question(db, session_id)
     return Result.success(data=response)
 
@@ -54,6 +60,7 @@ async def submit_answer(
     request: SubmitAnswerRequest,
     db: AsyncSession = Depends(get_async_session),
 ) -> Result[SubmitAnswerResponse]:
+    logger.info("Request arrived: POST /api/interview/sessions/%s/answers", session_id)
     response: SubmitAnswerResponse = await interview_agent_service.submit_answer(db, session_id, request)
     return Result.success(data=response)
 
@@ -64,6 +71,7 @@ async def save_answer(
     request: SubmitAnswerRequest,
     db: AsyncSession = Depends(get_async_session),
 ) -> Result[None]:
+    logger.info("Request arrived: PUT /api/interview/sessions/%s/answers", session_id)
     await interview_agent_service.save_answer(db, session_id, request)
     return Result.success(data=None)
 
@@ -73,6 +81,7 @@ async def complete_interview(
     session_id: str,
     db: AsyncSession = Depends(get_async_session),
 ) -> Result[None]:
+    logger.info("Request arrived: POST /api/interview/sessions/%s/complete", session_id)
     await interview_agent_service.complete_interview(db, session_id)
     return Result.success(data=None)
 
@@ -82,6 +91,7 @@ async def get_report(
     session_id: str,
     db: AsyncSession = Depends(get_async_session),
 ) -> Result[InterviewReportDTO]:
+    logger.info("Request arrived: GET /api/interview/sessions/%s/report", session_id)
     report: InterviewReportDTO = await interview_agent_service.generate_report(db, session_id)
     return Result.success(data=report)
 
@@ -91,6 +101,7 @@ async def find_unfinished_session(
     resume_id: int,
     db: AsyncSession = Depends(get_async_session),
 ) -> Result[InterviewSessionEntity]:
+    logger.info("Request arrived: GET /api/interview/sessions/unfinished/%s", resume_id)
     session: InterviewSessionEntity = await interview_persistence_service.find_unfinished_session_or_throw(db, resume_id)
     return Result.success(data=session)
 
@@ -100,6 +111,7 @@ async def get_interview_detail(
     session_id: str,
     db: AsyncSession = Depends(get_async_session),
 ) -> Result[InterviewDetailDTO]:
+    logger.info("Request arrived: GET /api/interview/sessions/%s/details", session_id)
     detail: InterviewDetailDTO = await interview_history_service.get_interview_detail(db, session_id)
     return Result.success(data=detail)
 
@@ -109,6 +121,7 @@ async def delete_interview(
     session_id: str,
     db: AsyncSession = Depends(get_async_session),
 ) -> Result[None]:
+    logger.info("Request arrived: DELETE /api/interview/sessions/%s", session_id)
     await interview_persistence_service.delete_session_by_session_id(db, session_id)
     return Result.success(data=None)
 
@@ -118,6 +131,7 @@ async def export_report_pdf(
     session_id: str,
     db: AsyncSession = Depends(get_async_session),
 ) -> Response:
+    logger.info("Request arrived: GET /api/interview/sessions/%s/export", session_id)
     filename, content = await interview_agent_service.export_report_pdf(db, session_id)
     encoded_filename: str = urllib.parse.quote(filename.encode("utf-8"))
     headers: dict[str, str] = {

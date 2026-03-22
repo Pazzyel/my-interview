@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Dict, Any, Optional
@@ -64,11 +63,13 @@ class AnalyzeMessageProducer(AbstractMessageProducer[AnalyzeTaskPayload]):
         return f"resumeId={payload.resume_id}"
 
     def on_send_failed(self, payload: AnalyzeTaskPayload, error: str) -> None:
-        asyncio.run(self._update_analyze_status(
-            payload.resume_id,
-            AsyncTaskStatus.FAILED,
-            self.truncate_error(error),
-        ))
+        self.run_coroutine_safely(
+            self._update_analyze_status(
+                payload.resume_id,
+                AsyncTaskStatus.FAILED,
+                self.truncate_error(error),
+            )
+        )
 
     # ────────── 私有方法 ──────────
 

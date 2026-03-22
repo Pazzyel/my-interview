@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Dict, Any, Optional
@@ -82,11 +81,13 @@ class VectorizeMessageProducer(AbstractMessageProducer[VectorizeTaskPayload]):
         return f"kb_id={payload.kb_id}"
 
     def on_send_failed(self, payload: VectorizeTaskPayload, error: str) -> None:
-        asyncio.run(self._update_vector_status(
-            payload.kb_id,
-            VectorStatus.FAILED,
-            self.truncate_error(error),
-        ))
+        self.run_coroutine_safely(
+            self._update_vector_status(
+                payload.kb_id,
+                VectorStatus.FAILED,
+                self.truncate_error(error),
+            )
+        )
 
     # ────────── 私有方法 ──────────
 

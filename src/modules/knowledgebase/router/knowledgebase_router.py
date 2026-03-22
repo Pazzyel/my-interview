@@ -40,6 +40,7 @@ async def upload_knowledge_base(
     Upload a knowledge base file with optional name and category.
     Triggers async vectorization via RocketMQ.
     """
+    logger.info("Request arrived: POST /api/knowledgebase/upload")
     result_data: Dict[str, Any] = await knowledgebase_upload_service.upload_knowledge_base(db, file, name, category)
 
     is_duplicate: bool = result_data.get("duplicate", False)
@@ -59,6 +60,7 @@ async def revectorize(
 
     Re-vectorize a knowledge base. Used after vectorization failure.
     """
+    logger.info("Request arrived: POST /api/knowledgebase/%s/revectorize", kb_id)
     await knowledgebase_upload_service.revectorize(db, kb_id)
     return Result.success(data=None)
 
@@ -69,6 +71,7 @@ async def get_all_knowledge_bases(
     db: AsyncSession = Depends(get_async_session),
 ):
     """获取所有知识库列表 / Get all knowledge bases"""
+    logger.info("Request arrived: GET /api/knowledgebase/list")
     status_enum = None
     if vectorStatus:
         try:
@@ -84,6 +87,7 @@ async def get_all_categories(
     db: AsyncSession = Depends(get_async_session),
 ):
     """获取所有分类 / Get all categories"""
+    logger.info("Request arrived: GET /api/knowledgebase/categories")
     categories = await knowledgebase_list_service.get_all_categories(db)
     return Result.success(data=categories)
 
@@ -93,6 +97,7 @@ async def get_by_category(
     db: AsyncSession = Depends(get_async_session),
 ):
     """根据分类获取知识库列表 / Get knowledge bases by category"""
+    logger.info("Request arrived: GET /api/knowledgebase/category/%s", category)
     items = await knowledgebase_list_service.list_by_category(db, category)
     return Result.success(data=items)
 
@@ -101,6 +106,7 @@ async def get_uncategorized(
     db: AsyncSession = Depends(get_async_session),
 ):
     """获取未分类的知识库 / Get uncategorized knowledge bases"""
+    logger.info("Request arrived: GET /api/knowledgebase/uncategorized")
     items = await knowledgebase_list_service.list_by_category(db, None)
     return Result.success(data=items)
 
@@ -114,6 +120,7 @@ async def update_category(
     db: AsyncSession = Depends(get_async_session),
 ):
     """更新知识库分类 / Update knowledge base category"""
+    logger.info("Request arrived: PUT /api/knowledgebase/%s/category", kb_id)
     await knowledgebase_list_service.update_category(db, kb_id, req.category)
     return Result.success(data=None)
 
@@ -123,6 +130,7 @@ async def search(
     db: AsyncSession = Depends(get_async_session),
 ):
     """搜索知识库 / Search knowledge bases"""
+    logger.info("Request arrived: GET /api/knowledgebase/search")
     items = await knowledgebase_list_service.search(db, keyword)
     return Result.success(data=items)
 
@@ -131,6 +139,7 @@ async def get_statistics(
     db: AsyncSession = Depends(get_async_session),
 ):
     """获取知识库统计信息 / Get knowledge base statistics"""
+    logger.info("Request arrived: GET /api/knowledgebase/stats")
     stats = await knowledgebase_list_service.get_statistics(db)
     return Result.success(data=stats)
     
@@ -140,6 +149,7 @@ async def get_knowledge_base(
     db: AsyncSession = Depends(get_async_session),
 ):
     """获取知识库详情 / Get knowledge base details"""
+    logger.info("Request arrived: GET /api/knowledgebase/%s", kb_id)
     item = await knowledgebase_list_service.get_knowledge_base(db, kb_id)
     if not item:
         return Result.error(message="知识库不存在 / Knowledge base not found")
@@ -153,6 +163,7 @@ async def download_knowledge_base(
     db: AsyncSession = Depends(get_async_session),
 ):
     """下载知识库文件 / Download knowledge base file"""
+    logger.info("Request arrived: GET /api/knowledgebase/%s/download", kb_id)
     try:
         entity = await knowledgebase_list_service.get_entity_for_download(db, kb_id)
         content = await knowledgebase_list_service.download_file(db, kb_id)
@@ -175,6 +186,7 @@ async def delete_knowledge_base(
     db: AsyncSession = Depends(get_async_session),
 ):
     """删除知识库 / Delete knowledge base"""
+    logger.info("Request arrived: DELETE /api/knowledgebase/%s", kb_id)
     await knowledgebase_delete_service.delete_knowledge_base(db, kb_id)
     return Result.success(data=None)
 
@@ -184,6 +196,7 @@ async def query_knowledge_base(
     db: AsyncSession = Depends(get_async_session),
 ):
     """基于知识库回答问题（支持多知识库）"""
+    logger.info("Request arrived: POST /api/knowledgebase/query")
     data: QueryResponse = await knowledgebase_query_service.query_knowledge_base(db, request)
     return Result.success(data=data)
 
@@ -192,6 +205,7 @@ async def query_knowledge_base_stream(
     request: QueryRequest,
 ):
     """基于知识库回答问题（流式输出，不会更新知识库计数）"""
+    logger.info("Request arrived: POST /api/knowledgebase/query/stream")
     return StreamingResponse(
         knowledgebase_query_service.answer_question_stream(request.question, request.knowledge_base_ids),
         media_type="text/event-stream"

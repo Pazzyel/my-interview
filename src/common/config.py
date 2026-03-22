@@ -27,8 +27,8 @@ class AppConfigProperties(BaseSettings):
 
     # RustFS (S3 compatible) config
     rustfs_endpoint_url: str = "http://localhost:9000"
-    rustfs_access_key: str = "minioadmin"
-    rustfs_secret_key: str = "minioadmin"
+    rustfs_access_key: str = "rustfsadmin"
+    rustfs_secret_key: str = "rustfsadmin"
     rustfs_region_name: str = "us-east-1"
     rustfs_bucket_name: str = "resources"
 

@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
@@ -54,7 +53,7 @@ class EvaluateMessageProducer(AbstractMessageProducer[EvaluateTaskPayload]):
         return f"sessionId={payload.session_id}"
 
     def on_send_failed(self, payload: EvaluateTaskPayload, error: str) -> None:
-        asyncio.run(
+        self.run_coroutine_safely(
             self._update_evaluate_status(
                 payload.session_id,
                 AsyncTaskStatus.FAILED,
