@@ -9,7 +9,7 @@ from langgraph.constants import START, END
 from langgraph.graph import StateGraph, add_messages
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Checkpointer, Command
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 
 from common.ai_config import ai_config
 from common.exceptions import BusinessException, ErrorCode
@@ -38,7 +38,7 @@ class InterviewQuestionGraphState(BaseModel):
     resume_text: str # 简历文本内容
     question_count: int # 问题的数量（持久化）
     historical_questions: list[str] = [] # 历史问题
-    messages: Annotated[list[AnyMessage], add_messages] = []
+    messages: Annotated[list[AnyMessage], add_messages] = [] # 其实一次就生成完了，没有必要更新这个字段。但是为了和load_prompt兼容，保留这个字段以供prompt调用
     generated: list[InterviewQuestionLLMItem] = []
     questions: list[InterviewQuestionDTO] = []
     error_message: str | None = None
@@ -49,7 +49,7 @@ class InterviewQuestionAgentService:
         self._follow_up_count: int = min(max(DEFAULT_FOLLOW_UP_COUNT, 0), MAX_FOLLOW_UP_COUNT)
         self._chat_model: ChatOpenAI = ChatOpenAI(
             model=ai_config.chat_model_name,
-            api_key=ai_config.chat_api_key,
+            api_key=SecretStr(ai_config.chat_api_key),
             base_url=ai_config.base_url,
             temperature=0,
         )
@@ -75,7 +75,7 @@ class InterviewQuestionAgentService:
         config: RunnableConfig = {
             "configurable": {"thread_id": f"interview-question-{session_id}"}
         }
-        result_state: InterviewQuestionGraphState = await self._graph.ainvoke(state, config=config)
+        result_state: InterviewQuestionGraphState = await self._graph.ainvoke(state, config=config) # type: ignore
         return result_state.questions
 
     async def _build_workflow(self, checkpointer: Checkpointer) -> CompiledStateGraph:

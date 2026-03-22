@@ -19,7 +19,7 @@ class KnowledgeBaseEntity(BaseModel):
 
     Pure data model for KnowledgeBase, decoupled from ORM.
     """
-    id: Optional[int] = None
+    id: int = 0
     file_hash: str = ""
     name: str = ""
     category: Optional[str] = None

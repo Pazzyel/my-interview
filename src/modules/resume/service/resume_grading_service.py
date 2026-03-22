@@ -3,6 +3,7 @@ from typing import Dict, List, cast
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
+from pydantic import SecretStr
 
 from common.ai_config import ai_config
 from infrastructure.prompt.prompt_service import load_prompt
@@ -18,7 +19,7 @@ class ResumeGradingService:
     def __init__(self) -> None:
         self._chat_model: ChatOpenAI = ChatOpenAI(
             model=ai_config.chat_model_name,
-            api_key=ai_config.chat_api_key,
+            api_key=SecretStr(ai_config.chat_api_key),
             base_url=ai_config.base_url,
             temperature=0,
         )

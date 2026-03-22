@@ -15,16 +15,16 @@ class AIConfigProperties:
     MAX_BATCH_SIZE = 10
 
     chat_model_name: str = "GLM-5"
-    chat_api_key = os.environ["OPENAI_API_KEY"]
-    base_url = "https://api.edgefn.net/v1"
+    chat_api_key: str = os.environ["OPENAI_API_KEY"]
+    base_url: str = "https://api.edgefn.net/v1"
 
-    short_query_length = 4
-    mid_query_length = 12
-    top_k_short = 20
-    top_k_medium = 12
-    top_k_long = 8
+    short_query_length: int = 4
+    mid_query_length: int = 12
+    top_k_short: int = 20
+    top_k_medium: int = 12
+    top_k_long: int = 8
 
-    min_score_shot = 0.18
-    min_score_default = 0.28
+    min_score_short: float = 0.18
+    min_score_default: float = 0.28
 
 ai_config = AIConfigProperties()

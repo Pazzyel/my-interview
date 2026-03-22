@@ -13,12 +13,12 @@ from langgraph.constants import START, END
 from langgraph.graph import StateGraph, add_messages
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command, Checkpointer
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.ai_config import ai_config
 from infrastructure.database.connection import async_session_factory
-from infrastructure.prompt.prompt_service import load_prompt, has_short_memory
+from infrastructure.prompt.prompt_service import load_prompt, has_short_memory, Role
 from modules.knowledgebase.model.query_request import QueryRequest
 from modules.knowledgebase.model.query_response import QueryResponse
 from modules.knowledgebase.service.knowledgebase_list_service import KnowledgeBaseListService
@@ -27,7 +27,7 @@ from modules.knowledgebase.service.knowledgebase_count_service import KnowledgeB
 
 llm = ChatOpenAI(
     model = ai_config.chat_model_name,
-    api_key = ai_config.chat_api_key,
+    api_key = SecretStr(ai_config.chat_api_key),
     base_url = ai_config.base_url,
 )
 
@@ -97,7 +97,7 @@ class KnowledgeBaseQueryService:
             }
         } if session_id is not None else None
         initial_state: KnowledgeQueryState = KnowledgeQueryState(origin_query=question, knowledgebase_ids=ids)
-        response_state: KnowledgeQueryState = await self.app.ainvoke(initial_state,config=config)
+        response_state: KnowledgeQueryState = await self.app.ainvoke(initial_state,config=config) # type: ignore
         return response_state.response
 
     async def answer_question_stream(self, question: str, ids: List[int], session_id: Optional[int] = None) -> AsyncGenerator[str, None]:
@@ -108,7 +108,7 @@ class KnowledgeBaseQueryService:
             }
         } if session_id is not None else None
         initial_state: KnowledgeQueryState = KnowledgeQueryState(origin_query=question, knowledgebase_ids=ids)
-        async for event in self.app.astream(
+        async for event in self.app.astream( # type: ignore
                 initial_state,
                 config=config,
                 stream_mode="updates"
@@ -123,7 +123,7 @@ class KnowledgeBaseQueryService:
 
     async def query_knowledge_base(self, db: AsyncSession, request: QueryRequest) -> QueryResponse:
         """根据知识库查询请求执行查询并构建响应"""
-        answer: str = await self.answer_question(request.question,request.knowledge_base_ids)
+        answer: str = await self.answer_question(request.question, request.knowledge_base_ids)
 
         # 获取知识库名称
         knowledgebase_names: List[str] = await self.knowledgebase_list_service.get_knowledge_base_names(db, request.knowledge_base_ids)
@@ -140,16 +140,16 @@ class KnowledgeBaseQueryService:
         workflow = StateGraph(KnowledgeQueryState)
         workflow.add_node("pre_retrieve",self.pre_retrieve)
         workflow.add_node("vector_retrieve",self.vector_retrieve)
-        workflow.add_node("answer_question",self.answer_question)
+        workflow.add_node("generate_answer", self.generate_answer)
         workflow.add_node("no_result_response",self.no_result_response)
 
         workflow.add_edge(START,"pre_retrieve")
         workflow.add_edge("pre_retrieve","no_result_response")
         workflow.add_edge("pre_retrieve","vector_retrieve")
         workflow.add_edge("vector_retrieve","no_result_response")
-        workflow.add_edge("vector_retrieve","answer_question")
+        workflow.add_edge("vector_retrieve","generate_answer")
         workflow.add_edge("no_result_response",END)
-        workflow.add_edge("answer_question",END)
+        workflow.add_edge("generate_answer",END)
 
         return workflow.compile(checkpointer = checkpointer)
 
@@ -193,7 +193,7 @@ class KnowledgeBaseQueryService:
                 "top_k": ai_config.top_k_short,
                 "min_score": ai_config.min_score_short,
             }
-        elif compact_length <= ai_config.medium_query_length:
+        elif compact_length <= ai_config.mid_query_length:
             search_params = {
                 "top_k": ai_config.top_k_medium,
                 "min_score": ai_config.min_score_default,
@@ -242,7 +242,7 @@ class KnowledgeBaseQueryService:
             goto="no_result_response",
         )
 
-    async def answer_question(self, state: KnowledgeQueryState, config: RunnableConfig) -> Command:
+    async def generate_answer(self, state: KnowledgeQueryState, config: RunnableConfig) -> Command:
         """根据用户提问的和RAG检索内容回答"""
 
         # 构建上下文，合并检索的文档
@@ -259,21 +259,37 @@ class KnowledgeBaseQueryService:
                 "question": state.candidate_queries[0], # 一般是重写后的问题
                 "context": context,
             })
-            answer_text = check_answer(answer.content)
+            answer_text = check_answer(answer.text)
             logging.info("知识库问答完成: kbIds={}", state.knowledgebase_ids)
             return Command(
-                update={"response": answer_text},
+                update={
+                    "response": answer_text,
+                    "messages": [
+                        (Role.USER.value, state.origin_query),
+                        (Role.ASSISTANT.value, answer_text),
+                    ],
+                },
             )
         except Exception as e:
             logging.error("知识库问答失败: {}", e)
             return Command(
-                update={"response": SERVER_ERROR_RESPONSE},
+                update={
+                    "response": SERVER_ERROR_RESPONSE,
+                    "messages": [
+                        (Role.USER.value, state.origin_query),
+                        (Role.ASSISTANT.value, SERVER_ERROR_RESPONSE),
+                    ],
+                },
             )
         
-    def no_result_response(state: KnowledgeQueryState) -> Command:
+    def no_result_response(self, state: KnowledgeQueryState) -> Command:
         """无内容的返回节点"""
         return Command(
             update={
                 "response": NO_RESULT_RESPONSE,
+                "messages": [
+                    (Role.USER.value, state.origin_query),
+                    (Role.ASSISTANT.value, NO_RESULT_RESPONSE),
+                ],
             }
         )

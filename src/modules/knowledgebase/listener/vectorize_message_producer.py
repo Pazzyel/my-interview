@@ -17,7 +17,7 @@ class VectorizeTaskPayload:
     """向量化任务载荷"""
     kb_id: int
     kb_name: str
-    kb_category: str
+    kb_category: Optional[str]
     content: str
     retry_count: int = 0
 
@@ -38,7 +38,7 @@ class VectorizeMessageProducer(AbstractMessageProducer[VectorizeTaskPayload]):
         self,
         kb_id: int,
         kb_name: str,
-        kb_category: str,
+        kb_category: Optional[str],
         content: str,
         retry_count: int = 0,
     ) -> None:
