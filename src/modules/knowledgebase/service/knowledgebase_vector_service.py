@@ -8,7 +8,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from common.ai_config import ai_config
 from common.config import app_config
 from common.exceptions import BusinessException, ErrorCode
-from infrastructure.vector.vector_store import vector_store
+from infrastructure.vector.vector_service import VectorService
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,8 @@ def token_length_function(content: str) -> int:
 
 
 class KnowledgeBaseVectorService:
-    def __init__(self):
+    def __init__(self, vector_service: VectorService):
+        self.vector_service: VectorService = vector_service
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=500,           # 每个块 500 Tokens
             chunk_overlap=50,         # 重叠 50 Tokens
@@ -66,7 +67,7 @@ class KnowledgeBaseVectorService:
                 end = min(start + MAX_BATCH_SIZE, total_chunks)
                 batch = documents[start:end]
                 logger.debug("处理第 %s/%s 批: chunks %s-%s", i + 1, batch_count, start + 1, end)
-                await vector_store.aadd_documents(batch)
+                await self.vector_service.add_documents(batch)
 
             logger.info(
                 "知识库向量化完成: kb_id=%s, chunks=%s, batches=%s",
@@ -95,62 +96,19 @@ class KnowledgeBaseVectorService:
         )
 
         try:
-            # 构建 ES 前置过滤条件
-            pre_filter = self._build_kb_filter(knowledgebase_ids) if knowledgebase_ids else None
-
-            # 使用 ElasticsearchStore 的 similarity_search_with_score 进行搜索
-            results_with_score = await vector_store.asimilarity_search_with_score(
+            results = await self.vector_service.similar_search(
                 query=query,
-                k=max(top_k, 1),
-                filter=pre_filter,
+                knowledgebase_ids=knowledgebase_ids,
+                top_k=top_k,
+                min_score=min_score,
             )
-
-            # 按 min_score 过滤（score 越高越相似）
-            results = [doc for doc, score in results_with_score if score >= min_score]
 
             logger.info("搜索完成: 找到 %s 个相关文档", len(results))
             return results
 
         except Exception as e:
-            logger.warning("向量搜索前置过滤失败，回退到本地过滤: %s", str(e))
-            return await self._similar_search_fallback(query, knowledgebase_ids, top_k, min_score)
-
-    async def _similar_search_fallback(
-        self, query: str, knowledgebase_ids: List[int], top_k: int, min_score: float
-    ) -> List[Document]:
-        """
-        回退搜索：不使用 ES 前置过滤，改为本地过滤 kb_id。
-        """
-        try:
-            results_with_score = await vector_store.asimilarity_search_with_score(
-                query=query,
-                k=max(top_k * 3, top_k),
-            )
-
-            # 按 min_score 过滤
-            results = [doc for doc, score in results_with_score if score >= min_score]
-
-            # 按 kb_id 本地过滤
-            if knowledgebase_ids:
-                kb_id_strs = {str(kid) for kid in knowledgebase_ids}
-                results = [doc for doc in results if doc.metadata.get("kb_id") in kb_id_strs]
-
-            results = results[:top_k]
-            logger.info("回退检索完成: 找到 %s 个相关文档", len(results))
-            return results
-
-        except Exception as e:
             logger.error("向量搜索失败: %s", str(e))
             raise BusinessException(ErrorCode.KB_VECTORIZE_ERROR, "向量搜索失败", str(e))
-
-    @staticmethod
-    def _build_kb_filter(knowledgebase_ids: List[int]) -> list:
-        """
-        构建 ES metadata 过滤条件，按 kb_id 过滤。
-        返回 langchain_elasticsearch 所需的 filter 格式。
-        """
-        kb_id_strs = [str(kid) for kid in knowledgebase_ids if kid is not None]
-        return [{"terms": {"metadata.kb_id.keyword": kb_id_strs}}]
 
     def delete_knowledgebase_by_id(self, knowledgebase_id: int) -> None:
         """
@@ -159,22 +117,7 @@ class KnowledgeBaseVectorService:
         """
         logger.info("开始删除知识库向量数据: kb_id=%s", knowledgebase_id)
         try:
-            # 使用 Elasticsearch 客户端按 metadata.kb_id 删除
-            es_client = vector_store.client
-            index_name = app_config.elasticsearch_index_name
-
-            # metadata.kb_id.keyword: keyword存储原始值，不做任何分析，用于精确匹配
-            es_client.delete_by_query(
-                index=index_name,
-                body={
-                    "query": {
-                        "term": {
-                            "metadata.kb_id.keyword": str(knowledgebase_id)
-                        }
-                    }
-                },
-                refresh=True,
-            )
+            self.vector_service.delete_by_kb_id(knowledgebase_id)
             logger.info("成功删除知识库向量数据: kb_id=%s", knowledgebase_id)
         except Exception as e:
             logger.error("删除向量数据失败: kb_id=%s, error=%s", knowledgebase_id, str(e))
