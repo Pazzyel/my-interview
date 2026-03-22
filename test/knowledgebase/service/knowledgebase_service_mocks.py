@@ -106,7 +106,7 @@ class MockKnowledgeBaseVectorService:
     """替代 ES 向量库操作。"""
 
     def __init__(self) -> None:
-        self.delete_knowledgebase_by_id = MagicMock(return_value=None)
+        self.delete_knowledgebase_by_id = AsyncMock(return_value=None)
         self.vectorize_and_store = AsyncMock(return_value=None)
         self.similar_search = AsyncMock(return_value=[])
 

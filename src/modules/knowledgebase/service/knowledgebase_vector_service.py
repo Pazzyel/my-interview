@@ -41,7 +41,7 @@ class KnowledgeBaseVectorService:
         logger.info("开始向量化知识库: kb_id=%s, content_length=%s", kb_id, len(content))
         try:
             # 1. 先删除该知识库的旧向量数据
-            self.delete_knowledgebase_by_id(kb_id)
+            await self.delete_knowledgebase_by_id(kb_id)
 
             # 2. 文本分块，添加元数据
             documents: List[Document] = self.text_splitter.create_documents([content])
@@ -110,14 +110,14 @@ class KnowledgeBaseVectorService:
             logger.error("向量搜索失败: %s", str(e))
             raise BusinessException(ErrorCode.KB_VECTORIZE_ERROR, "向量搜索失败", str(e))
 
-    def delete_knowledgebase_by_id(self, knowledgebase_id: int) -> None:
+    async def delete_knowledgebase_by_id(self, knowledgebase_id: int) -> None:
         """
         删除指定知识库的所有向量数据。
         通过 metadata 中的 kb_id 字段查询并删除。
         """
         logger.info("开始删除知识库向量数据: kb_id=%s", knowledgebase_id)
         try:
-            self.vector_service.delete_by_kb_id(knowledgebase_id)
+            await self.vector_service.delete_by_kb_id(knowledgebase_id)
             logger.info("成功删除知识库向量数据: kb_id=%s", knowledgebase_id)
         except Exception as e:
             logger.error("删除向量数据失败: kb_id=%s, error=%s", knowledgebase_id, str(e))

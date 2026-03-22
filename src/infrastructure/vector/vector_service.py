@@ -27,6 +27,9 @@ class VectorService:
     async def add_documents(self, documents: List[Document]) -> None:
         await self._store.aadd_documents(documents)
 
+    def get_retriever(self, search_type: str = "similarity_score_threshold", search_kwargs: Optional[dict] = None):
+        return self._store.as_retriever(search_type=search_type, search_kwargs=search_kwargs)
+
     async def similar_search(
         self,
         query: str,
@@ -53,9 +56,9 @@ class VectorService:
             logger.warning("向量搜索前置过滤失败，回退到本地过滤: %s", str(e))
             return await self._similar_search_fallback(query, knowledgebase_ids, top_k, min_score)
 
-    def delete_by_kb_id(self, knowledgebase_id: int) -> None:
+    async def delete_by_kb_id(self, knowledgebase_id: int) -> None:
         es_client = self._store.client
-        es_client.delete_by_query(
+        await es_client.delete_by_query(
             index=app_config.elasticsearch_index_name,
             body={
                 "query": {

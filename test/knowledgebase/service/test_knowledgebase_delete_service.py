@@ -66,7 +66,7 @@ def test_delete_success_full_flow(service_and_mocks) -> None:
 
     asyncio.run(svc.delete_knowledge_base(db, 1))
 
-    vector_svc.delete_knowledgebase_by_id.assert_called_once_with(1)
+    vector_svc.delete_knowledgebase_by_id.assert_awaited_once_with(1)
     storage.delete_file.assert_awaited_once_with("kb/test.pdf")
     repo.delete_by_id.assert_awaited_once_with(db, 1)
 

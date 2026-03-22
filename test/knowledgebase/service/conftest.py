@@ -112,7 +112,7 @@ def _install_knowledgebase_service_stubs() -> None:
         class _StubKnowledgeBaseVectorService:
             def __init__(self):
                 pass
-            def delete_knowledgebase_by_id(self, knowledgebase_id):
+            async def delete_knowledgebase_by_id(self, knowledgebase_id):
                 pass
             async def vectorize_and_store(self, kb_id, kb_name, kb_category, content):
                 pass

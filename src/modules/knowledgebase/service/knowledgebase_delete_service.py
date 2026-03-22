@@ -57,7 +57,7 @@ class KnowledgeBaseDeleteService:
 
         # 3. 删除向量数据 / Delete vector data
         try:
-            self.vector_service.delete_knowledgebase_by_id(kb_id)
+            await self.vector_service.delete_knowledgebase_by_id(kb_id)
         except Exception as e:
             logger.warning(f"删除向量数据失败，继续删除知识库: kbId={kb_id}, error={str(e)}")
 
