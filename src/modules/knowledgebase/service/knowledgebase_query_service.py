@@ -31,10 +31,35 @@ llm = ChatOpenAI(
     base_url = ai_config.base_url,
 )
 
+logger = logging.getLogger(__name__)
+
 # 匹配2-20个字符的字符串
 SHOT_TOKEN_PATTERN = r"^[\p{L}\p{N}_-]{2,20}$"
 NO_RESULT_RESPONSE = "抱歉，在选定的知识库中未检索到相关信息。请换一个更具体的关键词或补充上下文后再试。"
 SERVER_ERROR_RESPONSE = "抱歉，AI知识库问答服务暂时不可用。请您稍后再试。"
+
+
+def to_json_serializable(data):
+    if isinstance(data, Document):
+        return {
+            "page_content": data.page_content,
+            "metadata": data.metadata,
+        }
+    if isinstance(data, dict):
+        return {key: to_json_serializable(value) for key, value in data.items()}
+    if isinstance(data, list):
+        return [to_json_serializable(item) for item in data]
+    if isinstance(data, tuple):
+        return [to_json_serializable(item) for item in data]
+    if isinstance(data, (str, int, float, bool)) or data is None:
+        return data
+    if hasattr(data, "model_dump") and callable(data.model_dump):
+        return to_json_serializable(data.model_dump())
+    if hasattr(data, "dict") and callable(data.dict):
+        return to_json_serializable(data.dict())
+    if hasattr(data, "__dict__"):
+        return to_json_serializable(vars(data))
+    return str(data)
 
 class KnowledgeQueryState(BaseModel):
     origin_query: str
@@ -63,15 +88,19 @@ def has_effective_hit(query: str, docs: List[Document]) -> bool:
     if not regex.match(SHOT_TOKEN_PATTERN, query):
         return True
 
-    # 是短token查询，检查查询的结果有没有包含查询的问题，有就是成功
-    for doc in docs:
-        text = doc.page_content
-        if text is not None and query.lower() in text.lower():
-            return True
+    # # 是短token查询，检查查询的结果有没有包含查询的问题，有就是成功
+    # for doc in docs:
+    #     text = doc.page_content
+    #     if text is not None and query.lower() in text.lower():
+    #         return True
 
-    # 否则就是失败
-    logging.info("短 query 命中确认失败，视为无有效结果: question='{}', docs={}", query, len(docs))
-    return False
+    # # 否则就是失败
+    # logger.info("短 query 命中确认失败，视为无有效结果: question='%s', docs=%d", query, len(docs))
+    # return False
+
+
+    # 这个短token查询校验过于严格，先放宽为只要有结果就算命中，后续根据实际情况再调整
+    return True 
 
 def check_answer(answer: str) -> str:
     if answer is None or len(answer) == 0:
@@ -115,7 +144,8 @@ class KnowledgeBaseQueryService:
         ):
             # 3. 格式化为 SSE 协议格式
             # event 结构通常为: {"node_name": {"field": "value"}}
-            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            safe_event = to_json_serializable(event)
+            yield f"data: {json.dumps(safe_event, ensure_ascii=False)}\n\n"
 
             # 4. 发送结束信号
         yield "data: [DONE]\n\n"
@@ -167,14 +197,22 @@ class KnowledgeBaseQueryService:
         original_query: str = trim_question(origin_query)
 
         # 2. LLM重写查询
-        prompt_template: ChatPromptTemplate = await load_prompt("knowledgebase-query-rewrite",has_short_memory(config))
+        existing_short_memory: bool = has_short_memory(config)
+        prompt_template: ChatPromptTemplate = await load_prompt("knowledgebase-query-rewrite",existing_short_memory)
         chain = prompt_template | llm
         try:
-            response = await chain.ainvoke({"question": original_query})
-            rewritten_query = response.content if response.content is not None and len(response.content) > 0 else original_query
-            logging.info("Query rewrite: origin='{}', rewritten='{}'", origin_query, response.content)
+            if existing_short_memory:
+                response = await chain.ainvoke({
+                    "question": original_query,
+                    "messages": state.messages,
+                })            
+            else:
+                response = await chain.ainvoke({"question": original_query})
+            logger.info("LLM query rewrite response: %s", response.text)
+            rewritten_query = response.text if response.text is not None and len(response.text) > 0 else original_query
+            logger.info("Query rewrite: origin='%s', rewritten='%s'", origin_query, response.text)
         except Exception as e:
-            logging.warning("Query rewrite 失败，使用原问题继续检索: {}", e)
+            logger.warning("Query rewrite 失败，使用原问题继续检索: %s", e)
             rewritten_query = original_query
 
 
@@ -217,7 +255,7 @@ class KnowledgeBaseQueryService:
                 top_k=state.search_params["top_k"],
                 min_score=state.search_params["min_score"],
             )
-            logging.info("检索候选 query='{}'，命中 {} 条", query, len(docs))
+            logger.info("检索候选 query='%s'，命中 %d 条", query, len(docs))
             # 命中有效就直接返回
             if has_effective_hit(query, docs):
                 return Command(
@@ -241,19 +279,28 @@ class KnowledgeBaseQueryService:
         # 构建上下文，合并检索的文档
         docs: List[Document] = state.query_documents
         context: str = "\n\n---\n\n".join(doc.page_content for doc in docs)
-        logging.debug("检索到 {} 个相关文档片段，第一篇内容是: {}", len(docs), docs[0].page_content[0:100] + "..." if docs else "N/A")
+        logger.info("检索到 %d 个相关文档片段，第一篇内容是: %s", len(docs), docs[0].page_content[0:100] + "..." if docs else "N/A")
 
-        system_prompt: ChatPromptTemplate = await load_prompt("knowledgebase-query-system", has_short_memory(config))
-        user_prompt: ChatPromptTemplate = await load_prompt("knowledgebase-query-user", has_short_memory(config))
+        exists_short_memory: bool = has_short_memory(config)
+        system_prompt: ChatPromptTemplate = await load_prompt("knowledgebase-query-system", exists_short_memory)
+        user_prompt: ChatPromptTemplate = await load_prompt("knowledgebase-query-user", exists_short_memory)
 
         chain = (system_prompt + user_prompt) | llm
         try:
-            answer = await chain.ainvoke({
-                "question": state.candidate_queries[0], # 一般是重写后的问题
-                "context": context,
-            })
+            if exists_short_memory:
+                answer = await chain.ainvoke({
+                    "question": state.candidate_queries[0], # 一般是重写后的问题
+                    "messages": state.messages,
+                    "context": context,
+                })
+            else:
+                answer = await chain.ainvoke({
+                    "question": state.candidate_queries[0], # 一般是重写后的问题
+                    "context": context,
+                })
+            logger.info("LLM generate answer response: %s", answer.text)
             answer_text = check_answer(answer.text)
-            logging.info("知识库问答完成: kbIds={}", state.knowledgebase_ids)
+            logger.info("知识库问答完成: kbIds=%s", state.knowledgebase_ids)
             return Command(
                 update={
                     "response": answer_text,
@@ -265,7 +312,7 @@ class KnowledgeBaseQueryService:
                 goto=END,
             )
         except Exception as e:
-            logging.error("知识库问答失败: {}", e)
+            logger.error("知识库问答失败: %s", e)
             return Command(
                 update={
                     "response": SERVER_ERROR_RESPONSE,
