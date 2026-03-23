@@ -9,7 +9,8 @@ class AIConfigProperties:
     embeddings = OpenAIEmbeddings(
         model=embeddings_model_name,
         api_key=SecretStr(os.environ["DASHSCOPE_API_KEY"]),
-        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        check_embedding_ctx_length=False,  # 关闭上下文长度检查，防止输入被修改为非字符串
     )
     # 嵌入模型 API 批量大小限制
     MAX_BATCH_SIZE = 10

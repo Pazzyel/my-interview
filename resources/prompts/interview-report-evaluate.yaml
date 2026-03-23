@@ -19,8 +19,9 @@ interview-report-evaluate:
     2. question_evaluations: 每题必须包含 score、feedback（指出优点与不足）及 reference_answer。
     3. reference_answer: 包含简洁的解题思路及 key_points（核心关键词）。
     4. 格式限制: 输出必须是合法的 JSON 对象，严禁包含 Markdown 代码块标签或其他自然语言描述。
-    5. 以下是一个结果的示例，严格按照以下 JSON 结构的格式输出（字段名、类型、层级必须一致，不要新增字段，不要缺少字段）：
-       {
+    5. 以下是一个结果的简单示例，你生成的评估结果必须严格按照以下 JSON 结构的格式输出（字段名、类型、层级必须一致，不要新增字段，不要缺少字段），但是示例的值只是参考，应该填你生成的评估结果：
+       这个JSON最外层的双花括号{{和}}是为了在yaml中正确解析，实际输出时需要使用单层花括号。
+       {{
          "overall_score": 85,
          "overall_feedback": "候选人整体基础较扎实，回答覆盖核心知识点，但部分问题缺少工程化细节。",
          "strengths": [
@@ -32,7 +33,7 @@ interview-report-evaluate:
            "加强性能优化量化指标"
          ],
          "question_evaluations": [
-           {
+           {{
              "question_index": 0,
              "score": 82,
              "feedback": "回答方向正确，能说明核心原理，但在边界场景处理上不够完整。",
@@ -42,9 +43,9 @@ interview-report-evaluate:
                "落地方案",
                "风险控制"
              ]
-           }
+           }}
          ]
-       }
+       }}
 
   user: |
     请基于以下信息完成评估：

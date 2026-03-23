@@ -64,6 +64,7 @@ class KnowledgeBaseVectorizeConsumerService:
         )
 
         # 3) 执行向量化
+        logger.info("正在向量化知识库: kbId=%s, kbName=%s, kbCategory=%s, contentLength=%s", kb_id, final_kb_name, final_kb_category, len(content))
         await self._knowledgebase_vector_service.vectorize_and_store(
             kb_id=kb_id,
             kb_name=final_kb_name,
@@ -71,6 +72,7 @@ class KnowledgeBaseVectorizeConsumerService:
             content=content,
         )
 
+        logger.info("知识库向量化完成，正在更新状态: kbId=%s", kb_id)
         # 4) 标记成功
         async with async_session_factory() as db:
             try:

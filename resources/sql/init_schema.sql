@@ -119,3 +119,12 @@ CREATE TABLE IF NOT EXISTS `rag_chat_messages` (
   KEY `ix_rag_chat_messages_session_id` (`session_id`),
   CONSTRAINT `fk_rag_chat_messages_session_id` FOREIGN KEY (`session_id`) REFERENCES `rag_chat_sessions` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `rag_session_knowledge_bases` (
+  `session_id` INT NOT NULL,
+  `knowledge_base_id` INT NOT NULL,
+  PRIMARY KEY (`session_id`, `knowledge_base_id`),
+  FOREIGN KEY (`session_id`) REFERENCES `rag_chat_sessions` (`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`knowledge_base_id`) REFERENCES `knowledge_bases` (`id`) ON DELETE CASCADE
+);
+

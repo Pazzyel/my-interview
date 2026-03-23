@@ -66,7 +66,7 @@ class KnowledgeBaseVectorService:
                 start = i * MAX_BATCH_SIZE
                 end = min(start + MAX_BATCH_SIZE, total_chunks)
                 batch = documents[start:end]
-                logger.debug("处理第 %s/%s 批: chunks %s-%s", i + 1, batch_count, start + 1, end)
+                logger.debug("处理第 %s/%s 批: chunks %s-%s, 第一篇文档长度=%s", i + 1, batch_count, start + 1, end, len(batch[0].page_content))
                 await self.vector_service.add_documents(batch)
 
             logger.info(

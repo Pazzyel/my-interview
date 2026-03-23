@@ -49,7 +49,7 @@ class RagChatSessionService:
             title,
             knowledge_base_ids,
         )
-        logging.info("创建 RAG 聊天会话: id={}, title={}", session_entity.id, session_entity.title)
+        logging.info("创建 RAG 聊天会话: id=%d, title=%s", session_entity.id, session_entity.title)
 
         return SessionDTO(
             id=session_entity.id,
@@ -113,14 +113,14 @@ class RagChatSessionService:
         updated: bool = await self.rag_chat_session_repository.update_session_title(db, session_id, title)
         if not updated:
             raise BusinessException(ErrorCode.NOT_FOUND, "会话不存在")
-        logging.info("更新会话标题: sessionId={}, title={}", session_id, title)
+        logging.info("更新会话标题: sessionId=%d, title=%s", session_id, title)
 
     async def toggle_pin(self, db: AsyncSession, session_id: int) -> None:
         """切换会话置顶状态。"""
         pinned: bool | None = await self.rag_chat_session_repository.toggle_pin(db, session_id)
         if pinned is None:
             raise BusinessException(ErrorCode.NOT_FOUND, "会话不存在")
-        logging.info("切换会话置顶状态: sessionId={}, isPinned={}", session_id, pinned)
+        logging.info("切换会话置顶状态: sessionId=%d, isPinned=%s", session_id, str(pinned))
 
     async def update_session_knowledge_bases(self, db: AsyncSession, session_id: int, knowledge_base_ids: List[int]) -> None:
         """更新会话关联知识库。"""
@@ -135,14 +135,14 @@ class RagChatSessionService:
         )
         if not updated:
             raise BusinessException(ErrorCode.NOT_FOUND, "会话不存在")
-        logging.info("更新会话知识库: sessionId={}, kbIds={}", session_id, knowledge_base_ids)
+        logging.info("更新会话知识库: sessionId=%d, kbIds=%s", session_id, str(knowledge_base_ids))
 
     async def delete_session(self, db: AsyncSession, session_id: int) -> None:
         """删除会话。"""
         deleted: bool = await self.rag_chat_session_repository.delete_session(db, session_id)
         if not deleted:
             raise BusinessException(ErrorCode.NOT_FOUND, "会话不存在")
-        logging.info("删除会话: sessionId={}", session_id)
+        logging.info("删除会话: sessionId=%d", session_id)
 
     async def prepare_stream_message(self, db: AsyncSession, session_id: int, question: str) -> int:
         """准备流式回答消息（用户消息 + AI 占位）。"""
@@ -150,7 +150,7 @@ class RagChatSessionService:
         if message_id is None:
             raise BusinessException(ErrorCode.NOT_FOUND, "会话不存在")
 
-        logging.info("准备流式消息: sessionId={}, messageId={}", session_id, message_id)
+        logging.info("准备流式消息: sessionId=%d, messageId=%d", session_id, message_id)
         return message_id
 
     async def complete_stream_message(self, db: AsyncSession, message_id: int, content: str) -> None:
@@ -159,7 +159,7 @@ class RagChatSessionService:
         if not updated:
             raise BusinessException(ErrorCode.NOT_FOUND, "消息不存在")
 
-        logging.info("完成流式消息: messageId={}, contentLength={}", message_id, len(content))
+        logging.info("完成流式消息: messageId=%d, contentLength=%d", message_id, len(content))
 
     async def get_stream_answer(self, db: AsyncSession, session_id: int, question: str) -> AsyncGenerator[str, None]:
         """读取会话绑定知识库并返回流式回答。"""

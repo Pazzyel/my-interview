@@ -144,13 +144,6 @@ class KnowledgeBaseQueryService:
         workflow.add_node("no_result_response",self.no_result_response)
 
         workflow.add_edge(START,"pre_retrieve")
-        workflow.add_edge("pre_retrieve","no_result_response")
-        workflow.add_edge("pre_retrieve","vector_retrieve")
-        workflow.add_edge("vector_retrieve","no_result_response")
-        workflow.add_edge("vector_retrieve","generate_answer")
-        workflow.add_edge("no_result_response",END)
-        workflow.add_edge("generate_answer",END)
-
         return workflow.compile(checkpointer = checkpointer)
 
     async def pre_retrieve(self, state: KnowledgeQueryState, config: RunnableConfig) -> Command:
@@ -231,7 +224,7 @@ class KnowledgeBaseQueryService:
                     update={
                         "query_documents": docs,
                     },
-                    goto="answer_question",
+                    goto="generate_answer",
                 )
 
         # 什么都没有命中
@@ -248,7 +241,7 @@ class KnowledgeBaseQueryService:
         # 构建上下文，合并检索的文档
         docs: List[Document] = state.query_documents
         context: str = "\n\n---\n\n".join(doc.page_content for doc in docs)
-        logging.debug("检索到 {} 个相关文档片段", len(docs))
+        logging.debug("检索到 {} 个相关文档片段，第一篇内容是: {}", len(docs), docs[0].page_content[0:100] + "..." if docs else "N/A")
 
         system_prompt: ChatPromptTemplate = await load_prompt("knowledgebase-query-system", has_short_memory(config))
         user_prompt: ChatPromptTemplate = await load_prompt("knowledgebase-query-user", has_short_memory(config))
@@ -269,6 +262,7 @@ class KnowledgeBaseQueryService:
                         (Role.ASSISTANT.value, answer_text),
                     ],
                 },
+                goto=END,
             )
         except Exception as e:
             logging.error("知识库问答失败: {}", e)
@@ -280,6 +274,7 @@ class KnowledgeBaseQueryService:
                         (Role.ASSISTANT.value, SERVER_ERROR_RESPONSE),
                     ],
                 },
+                goto=END,
             )
         
     def no_result_response(self, state: KnowledgeQueryState) -> Command:
@@ -291,5 +286,6 @@ class KnowledgeBaseQueryService:
                     (Role.USER.value, state.origin_query),
                     (Role.ASSISTANT.value, NO_RESULT_RESPONSE),
                 ],
-            }
+            },
+            goto=END,
         )
