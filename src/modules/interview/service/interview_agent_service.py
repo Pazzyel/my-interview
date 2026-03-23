@@ -80,6 +80,7 @@ class InterviewAgentService:
             resume_text=request.resume_text,
             question_count=request.question_count,
             historical_questions=history_questions,
+            session_id=session_id,
         )
         total_questions: int = len(questions)
         await self.interview_repository.create_session(

@@ -13,7 +13,7 @@ class AppConfigProperties(BaseSettings):
     ]
     max_file_size_bytes: int = 10 * 1024 * 1024  # 10MB
     # RocketMQ config
-    rocketmq_name_server: str = "localhost:9876"
+    rocketmq_endpoints: str = "localhost:8081"
     rocketmq_producer_group: str = "resume-producer-group"
     rocketmq_consumer_group: str = "resume-consumer-group"
     rocketmq_max_retry_count: int = 3

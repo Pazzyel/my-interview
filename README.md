@@ -5,10 +5,10 @@
 RocketMQ 需要安装的依赖
 
 ```bash
-pip install rocketmq-client-python
+pip install rocketmq-python-client
 ```
 
-rocketmq-client-python 底层依赖 RocketMQ 的 C++ 客户端库（librocketmq），仅支持 Linux 环境运行。在 Linux 上还需要安装 C++ 客户端：
+rocketmq-python-client 底层依赖 RocketMQ 的 C++ 客户端库（librocketmq），仅支持 Linux 环境运行。在 Linux 上还需要安装 C++ 客户端：
 
 ```bash
 # 以 CentOS/RHEL 为例

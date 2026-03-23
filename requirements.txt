@@ -91,7 +91,7 @@ RapidFuzz==3.14.3
 regex==2026.2.28
 requests==2.32.5
 requests-toolbelt==1.0.0
-rocketmq-client-python==2.0.0
+rocketmq-python-client==5.1.1
 s3transfer==0.14.0
 simsimd==6.5.16
 six==1.17.0

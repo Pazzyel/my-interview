@@ -1,7 +1,6 @@
-from pydantic import BaseModel
+from infrastructure.model.BaseCamelSchema import BaseCamelSchema
 
-
-class InterviewQuestionLLMItem(BaseModel):
+class InterviewQuestionLLMItem(BaseCamelSchema):
     """AI面试官生成的问题"""
     question: str
     type: str
@@ -9,11 +8,11 @@ class InterviewQuestionLLMItem(BaseModel):
     follow_ups: list[str] = []
 
 
-class InterviewQuestionLLMOutput(BaseModel):
+class InterviewQuestionLLMOutput(BaseCamelSchema):
     questions: list[InterviewQuestionLLMItem]
 
 
-class InterviewEvaluationLLMItem(BaseModel):
+class InterviewEvaluationLLMItem(BaseCamelSchema):
     """单个问题的苹果结果"""
     question_index: int # 问题在这轮面试的id
     score: int          # 回答的评分
@@ -22,7 +21,7 @@ class InterviewEvaluationLLMItem(BaseModel):
     key_points: list[str] = [] # 关键要点
 
 
-class InterviewEvaluationLLMOutput(BaseModel):
+class InterviewEvaluationLLMOutput(BaseCamelSchema):
     overall_score: int
     overall_feedback: str
     strengths: list[str]

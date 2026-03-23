@@ -4,13 +4,28 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, Coroutine, Generic, Optional, TypeVar
 
-from rocketmq.client import ConsumeStatus, PushConsumer
+from rocketmq import (
+    ClientConfiguration,
+    ConsumeResult,
+    Credentials,
+    FilterExpression,
+    MessageListener,
+    PushConsumer,
+)
 
 from common.config import app_config
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+
+class _CallbackMessageListener(MessageListener):
+    def __init__(self, callback: Any):
+        self._callback = callback
+
+    def consume(self, message: Any) -> ConsumeResult:
+        return self._callback(message)
 
 
 class AbstractStreamConsumer(ABC, Generic[T]):
@@ -38,10 +53,16 @@ class AbstractStreamConsumer(ABC, Generic[T]):
             return
 
         self._main_loop = asyncio.get_running_loop()
-        consumer: PushConsumer = PushConsumer(self.consumer_group())
-        consumer.set_name_server_address(app_config.rocketmq_name_server)
-        consumer.subscribe(self.topic(), self._on_message, self.tag())
-        consumer.start()
+        config = ClientConfiguration(app_config.rocketmq_endpoints, Credentials())
+        listener = _CallbackMessageListener(self._on_message)
+        subscription = {self.topic(): FilterExpression(self.tag() or "*")}
+        consumer: PushConsumer = PushConsumer(
+            client_configuration=config,
+            consumer_group=self.consumer_group(),
+            message_listener=listener,
+            subscription=subscription,
+        )
+        consumer.startup()
 
         self._consumer = consumer
         self._started = True
@@ -65,7 +86,7 @@ class AbstractStreamConsumer(ABC, Generic[T]):
         self._started = False
         logger.info("%s consumer stopped", self.consumer_display_name())
 
-    def _on_message(self, message: Any) -> ConsumeStatus:
+    def _on_message(self, message: Any) -> ConsumeResult:
         """
         RocketMQ 回调模板方法。
 
@@ -87,15 +108,15 @@ class AbstractStreamConsumer(ABC, Generic[T]):
                 str(error),
                 exc_info=True,
             )
-            return ConsumeStatus.CONSUME_SUCCESS
+            return ConsumeResult.SUCCESS
 
         payload: Optional[T] = self.parse_payload(payload_dict)
         if payload is None:
-            return ConsumeStatus.CONSUME_SUCCESS
+            return ConsumeResult.SUCCESS
 
         try:
             self._run_coroutine(self.process_payload(payload))
-            return ConsumeStatus.CONSUME_SUCCESS
+            return ConsumeResult.SUCCESS
         except Exception as error:
             error_message: str = f"{self.consumer_display_name()} failed: {str(error)}"
             logger.error(
@@ -115,10 +136,10 @@ class AbstractStreamConsumer(ABC, Generic[T]):
                     self.payload_identifier(payload),
                     current_retry_count + 1,
                 )
-                return ConsumeStatus.CONSUME_SUCCESS
+                return ConsumeResult.SUCCESS
 
             self._run_coroutine(self.mark_failed(payload, error_message))
-            return ConsumeStatus.CONSUME_SUCCESS
+            return ConsumeResult.SUCCESS
 
     def _run_coroutine(self, coroutine: Coroutine[Any, Any, Any]) -> Any:
         """在回调线程中将协程提交至主事件循环执行 / Submit coroutine to main loop."""

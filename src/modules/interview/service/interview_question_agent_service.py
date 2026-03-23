@@ -75,7 +75,8 @@ class InterviewQuestionAgentService:
         config: RunnableConfig = {
             "configurable": {"thread_id": f"interview-question-{session_id}"}
         }
-        result_state: InterviewQuestionGraphState = await self._graph.ainvoke(state, config=config) # type: ignore
+        result_dict: dict = await self._graph.ainvoke(state, config=config)
+        result_state: InterviewQuestionGraphState = InterviewQuestionGraphState(**result_dict)
         return result_state.questions
 
     async def _build_workflow(self, checkpointer: Checkpointer) -> CompiledStateGraph:
@@ -86,12 +87,6 @@ class InterviewQuestionAgentService:
         workflow.add_node("fallback_questions", self._node_fallback_questions)
 
         workflow.add_edge(START, "prepare_question_context")
-        workflow.add_edge("prepare_question_context", "generate_questions")
-        workflow.add_edge("prepare_question_context", "fallback_questions")
-        workflow.add_edge("generate_questions", "normalize_questions")
-        workflow.add_edge("generate_questions", "fallback_questions")
-        workflow.add_edge("normalize_questions", END)
-        workflow.add_edge("fallback_questions", END)
         return workflow.compile(checkpointer=checkpointer)
 
     async def _node_prepare_question_context(
@@ -156,6 +151,7 @@ class InterviewQuestionAgentService:
                     "messages": state.messages,
                 }
             )) # 因为是with_structured_output，所以确信是子类
+            logger.info(f"LLM generated {llm_output.questions}")
             return Command(
                 update={
                     "generated": llm_output.questions,
@@ -233,6 +229,16 @@ class InterviewQuestionAgentService:
         Provide fallback questions when LLM fails or input is invalid,
         ensuring interview flow remains available.
         """
+        fallback_questions: list[InterviewQuestionDTO] = self._build_fallback_questions(state.question_count)
+        return Command(
+            update={
+                "questions": fallback_questions,
+                "generated": [],
+            },
+            goto=END,
+        )
+
+    def _build_fallback_questions(self, question_count: int) -> list[InterviewQuestionDTO]:
         fallback_questions: list[InterviewQuestionDTO] = []
         defaults: list[tuple[str, QuestionType, str]] = [
             ("请介绍你最核心的项目以及你的职责", QuestionType.PROJECT, "项目经历"),
@@ -242,7 +248,7 @@ class InterviewQuestionAgentService:
             ("请介绍 Spring Boot 自动配置的核心机制", QuestionType.SPRING_BOOT, "框架"),
         ]
         question_index: int = 0
-        for text, question_type, category in defaults[: max(1, state.question_count)]:
+        for text, question_type, category in defaults[: max(1, question_count)]:
             fallback_questions.append(
                 InterviewQuestionDTO(
                     question_index=question_index,
@@ -255,13 +261,7 @@ class InterviewQuestionAgentService:
                 )
             )
             question_index += 1
-        return Command(
-            update={
-                "questions": fallback_questions,
-                "generated": [],
-            },
-            goto=END,
-        )
+        return fallback_questions
 
     def _safe_question_type(self, raw_type: str) -> QuestionType:
         try:

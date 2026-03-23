@@ -10,7 +10,7 @@ from langgraph.constants import START, END
 from langgraph.graph import StateGraph, add_messages
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Checkpointer, Command
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 
 from common.ai_config import ai_config
 from common.exceptions import BusinessException, ErrorCode
@@ -41,7 +41,7 @@ class InterviewEvaluationAgentService:
         self._graph: CompiledStateGraph | None = None
         self._chat_model: ChatOpenAI = ChatOpenAI(
             model=ai_config.chat_model_name,
-            api_key=ai_config.chat_api_key,
+            api_key=SecretStr(ai_config.chat_api_key),
             base_url=ai_config.base_url,
             temperature=0,
         )
@@ -63,7 +63,9 @@ class InterviewEvaluationAgentService:
             questions=questions,
         )
         config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
-        result_state: InterviewEvaluateGraphState = await self._graph.ainvoke(state, config=config)
+        logger.info(f"Starting interview evaluation for thread_id={thread_id} with {len(questions)} questions")
+        result_dict: dict = await self._graph.ainvoke(state, config=config)
+        result_state: InterviewEvaluateGraphState = InterviewEvaluateGraphState(**result_dict)
         if result_state.report is None:
             raise BusinessException(ErrorCode.SYSTEM_ERROR, "面试评估结果为空")
         return result_state.report
@@ -75,11 +77,6 @@ class InterviewEvaluationAgentService:
         workflow.add_node("fallback_report", self._node_fallback_report)
 
         workflow.add_edge(START, "prepare_evaluate_context")
-        workflow.add_edge("prepare_evaluate_context", "evaluate_answers")
-        workflow.add_edge("prepare_evaluate_context", "fallback_report")
-        workflow.add_edge("evaluate_answers", END)
-        workflow.add_edge("evaluate_answers", "fallback_report")
-        workflow.add_edge("fallback_report", END)
         return workflow.compile(checkpointer=checkpointer)
 
     async def _node_prepare_evaluate_context(self, state: InterviewEvaluateGraphState) -> Command:
@@ -216,7 +213,7 @@ class InterviewEvaluationAgentService:
                 ReferenceAnswerDTO(
                     question_index=eval_item.question_index,
                     question=question_text,
-                    reference_answer=eval_item.reference_answer,
+                    reference_answer=str(eval_item.reference_answer),
                     key_points=eval_item.key_points,
                 )
             )

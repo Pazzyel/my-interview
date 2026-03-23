@@ -6,7 +6,7 @@ from typing import TypeVar, Generic, Dict, Any, Optional, ClassVar, Coroutine
 
 import asyncio
 
-from rocketmq.client import Producer, Message
+from rocketmq import ClientConfiguration, Credentials, Message, Producer
 
 from common.config import app_config
 
@@ -31,14 +31,14 @@ class AbstractMessageProducer(ABC, Generic[T]):
         with self._producer_lock:
             producer = self._producers.get(self._producer_group)
             if producer is None:
-                producer = Producer(self._producer_group)
-                producer.set_name_server_address(app_config.rocketmq_name_server)
-                producer.start()
+                config = ClientConfiguration(app_config.rocketmq_endpoints, Credentials())
+                producer = Producer(config, (self.topic(),))
+                producer.startup()
                 self._producers[self._producer_group] = producer
                 self._producer_ref_counts[self._producer_group] = 0
                 logger.info(
-                    "RocketMQ Producer started: name_server=%s, group=%s",
-                    app_config.rocketmq_name_server,
+                    "RocketMQ Producer started: endpoints=%s, group=%s",
+                    app_config.rocketmq_endpoints,
                     self._producer_group,
                 )
 
@@ -55,19 +55,20 @@ class AbstractMessageProducer(ABC, Generic[T]):
         try:
             body = json.dumps(self.build_message(payload), ensure_ascii=False).encode("utf-8")
 
-            msg = Message(self.topic())
-            msg.set_keys(self.payload_identifier(payload))
-            msg.set_tags(self.tag())
-            msg.set_body(body)
+            msg = Message()
+            msg.topic = self.topic()
+            msg.keys = self.payload_identifier(payload)
+            msg.tag = self.tag()
+            msg.body = body
 
-            send_result = self._producer.send_sync(msg)
+            send_result = self._producer.send(msg)
 
             logger.info(
                 "%s 任务已发送到 RocketMQ: topic=%s, msg_id=%s, status=%s, %s",
                 self.task_display_name(),
                 self.topic(),
-                send_result.msg_id,
-                send_result.status,
+                send_result.message_id,
+                "SUCCESS",
                 self.payload_identifier(payload),
             )
         except Exception as e:

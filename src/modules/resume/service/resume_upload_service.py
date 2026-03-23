@@ -53,7 +53,7 @@ class ResumeUploadService:
             f"Unsupported file type: {content_type}"
         )
 
-        logger.info(f"Received resume upload request: {file.filename}")
+        logger.info(f"Received resume upload request: {file.filename}, size={file_size} bytes, content_type={content_type}")
 
         # 根据文件内容计算哈希值
         # Hash for deduplication
