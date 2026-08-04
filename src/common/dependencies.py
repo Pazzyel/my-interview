@@ -11,6 +11,8 @@ from modules.interview.service.interview_evaluate_consumer_service import Interv
 from modules.interview.service.interview_history_service import InterviewHistoryService
 from modules.interview.service.interview_persistence_service import InterviewPersistenceService
 from modules.interview.service.interview_skill_service import InterviewSkillService
+from modules.interview.service.interview_creation_coordinator import InterviewCreationCoordinator
+from common.llm_provider import AiConfigLlmProviderResolver
 from modules.knowledgebase.listener.vectorize_message_consumer import VectorizeMessageConsumer
 from modules.knowledgebase.listener.vectorize_message_producer import VectorizeMessageProducer
 # ────── Knowledge Base imports ──────
@@ -52,8 +54,16 @@ interview_repository = InterviewRepository()
 interview_persistence_service = InterviewPersistenceService(interview_repository)
 interview_history_service = InterviewHistoryService(interview_repository)
 interview_skill_service = InterviewSkillService()
+llm_provider_resolver = AiConfigLlmProviderResolver()
+interview_creation_coordinator = InterviewCreationCoordinator()
 evaluate_message_producer = EvaluateMessageProducer(interview_repository)
-interview_agent_service = InterviewAgentService(interview_repository, evaluate_message_producer)
+interview_agent_service = InterviewAgentService(
+    interview_repository,
+    evaluate_message_producer,
+    interview_skill_service,
+    llm_provider_resolver,
+    interview_creation_coordinator,
+)
 interview_evaluate_consumer_service = InterviewEvaluateConsumerService(interview_agent_service, interview_repository)
 evaluate_message_consumer = EvaluateMessageConsumer(interview_evaluate_consumer_service, evaluate_message_producer)
 

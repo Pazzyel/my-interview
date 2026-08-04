@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import delete, desc, insert, select, update
@@ -9,6 +10,7 @@ from infrastructure.database.models import InterviewAnswerORM, InterviewSessionO
 from infrastructure.database.models import ResumeORM
 from modules.interview.model.interview_dto import InterviewAnswerDetailDTO, InterviewDetailDTO, \
     InterviewHistoryItemDTO
+from modules.interview.model.interview_agent_dto import HistoricalQuestion, SessionListItemDTO
 from modules.interview.model.interview_entity import InterviewSessionEntity, SessionStatus
 
 
@@ -22,13 +24,21 @@ class InterviewRepository:
         self,
         db: AsyncSession,
         session_id: str,
-        resume_id: int,
+        resume_id: int | None,
         total_questions: int,
         questions_json: str,
+        request_id: str | None = None,
+        skill_id: str = "java-backend",
+        difficulty: str = "mid",
+        llm_provider: str = "default",
     ) -> None:
         insert_data: dict[str, Any] = {
             "session_id": session_id,
             "resume_id": resume_id,
+            "request_id": request_id,
+            "skill_id": skill_id,
+            "difficulty": difficulty,
+            "llm_provider": llm_provider,
             "total_questions": total_questions,
             "current_question_index": 0,
             "status": "CREATED",
@@ -38,6 +48,8 @@ class InterviewRepository:
 
     async def update_session_status(self, db: AsyncSession, session_id: str, status: str) -> None:
         update_data: dict[str, Any] = {"status": status}
+        if status in {"COMPLETED", "EVALUATED"}:
+            update_data["completed_at"] = datetime.now()
         await db.execute(
             update(InterviewSessionORM)
             .where(InterviewSessionORM.session_id == session_id)
@@ -81,6 +93,8 @@ class InterviewRepository:
             "status": status,
             "questions_json": questions_json,
         }
+        if status == "COMPLETED":
+            update_data["completed_at"] = datetime.now()
         await db.execute(
             update(InterviewSessionORM)
             .where(InterviewSessionORM.session_id == session_id)
@@ -177,6 +191,66 @@ class InterviewRepository:
         result = await db.execute(stmt)
         resume_text: str | None = result.scalar_one_or_none()
         return resume_text or ""
+
+    async def find_by_request_id(self, db: AsyncSession, request_id: str) -> InterviewSessionEntity | None:
+        stmt = select(InterviewSessionORM).where(InterviewSessionORM.request_id == request_id)
+        result = await db.execute(stmt)
+        item = result.scalar_one_or_none()
+        return self._to_session_entity(item) if item is not None else None
+
+    async def bind_request_id(self, db: AsyncSession, session_id: str, request_id: str) -> None:
+        await db.execute(
+            update(InterviewSessionORM)
+            .where(InterviewSessionORM.session_id == session_id)
+            .values(request_id=request_id)
+        )
+
+    async def list_historical_questions(
+        self, db: AsyncSession, skill_id: str, resume_id: int | None
+    ) -> list[HistoricalQuestion]:
+        stmt = select(InterviewSessionORM.questions_json).where(
+            InterviewSessionORM.skill_id == skill_id
+        )
+        if resume_id is None:
+            stmt = stmt.where(InterviewSessionORM.resume_id.is_(None))
+        else:
+            stmt = stmt.where(InterviewSessionORM.resume_id == resume_id)
+        result = await db.execute(stmt.order_by(desc(InterviewSessionORM.created_at)).limit(10))
+        history: list[HistoricalQuestion] = []
+        seen: set[str] = set()
+        for raw in result.scalars().all():
+            for item in self._parse_json_array(raw):
+                if not isinstance(item, dict) or bool(item.get("isFollowUp", False)):
+                    continue
+                question = str(item.get("question", "")).strip()
+                if not question or question in seen:
+                    continue
+                seen.add(question)
+                history.append(HistoricalQuestion(
+                    question=question,
+                    type=str(item.get("type", "GENERAL")),
+                    topic_summary=item.get("topicSummary"),
+                ))
+                if len(history) >= 60:
+                    return history
+        return history
+
+    async def list_sessions(self, db: AsyncSession) -> list[SessionListItemDTO]:
+        result = await db.execute(select(InterviewSessionORM).order_by(desc(InterviewSessionORM.created_at)))
+        return [SessionListItemDTO(
+            session_id=item.session_id,
+            resume_id=item.resume_id,
+            skill_id=item.skill_id,
+            difficulty=item.difficulty,
+            llm_provider=item.llm_provider,
+            total_questions=item.total_questions,
+            status=item.status.value,
+            evaluate_status=item.evaluate_status.value if item.evaluate_status else None,
+            evaluate_error=item.evaluate_error,
+            overall_score=item.overall_score,
+            created_at=item.created_at,
+            completed_at=item.completed_at,
+        ) for item in result.scalars().all()]
 
     async def list_historical_questions_by_resume_id(self, db: AsyncSession, resume_id: int) -> list[str]:
         """
@@ -275,6 +349,10 @@ class InterviewRepository:
         return InterviewDetailDTO(
             id=session_orm.id,
             sessionId=session_orm.session_id,
+            resumeId=session_orm.resume_id,
+            skillId=session_orm.skill_id,
+            difficulty=session_orm.difficulty,
+            llmProvider=session_orm.llm_provider,
             totalQuestions=session_orm.total_questions,
             status=session_orm.status.value,
             evaluateStatus=session_orm.evaluate_status,
@@ -316,6 +394,21 @@ class InterviewRepository:
             return None
         return self._to_session_entity(orm_obj)
 
+    async def find_unfinished(
+        self, db: AsyncSession, resume_id: int, skill_id: str
+    ) -> InterviewSessionEntity | None:
+        stmt = (
+            select(InterviewSessionORM)
+            .where(InterviewSessionORM.resume_id == resume_id)
+            .where(InterviewSessionORM.skill_id == skill_id)
+            .where(InterviewSessionORM.status.in_(["CREATED", "IN_PROGRESS"]))
+            .order_by(desc(InterviewSessionORM.created_at))
+            .limit(1)
+        )
+        result = await db.execute(stmt)
+        item = result.scalar_one_or_none()
+        return self._to_session_entity(item) if item is not None else None
+
     async def count_by_resume_id(self, db: AsyncSession, resume_id: int) -> int:
         stmt = select(InterviewSessionORM.id).where(InterviewSessionORM.resume_id == resume_id)
         result = await db.execute(stmt)
@@ -331,6 +424,10 @@ class InterviewRepository:
         return [
             InterviewHistoryItemDTO(
                 sessionId=item.sessionId,
+                resumeId=item.resumeId,
+                skillId=item.skillId,
+                difficulty=item.difficulty,
+                llmProvider=item.llmProvider,
                 status=item.status.value,
                 overallScore=item.overallScore,
                 createdAt=item.createdAt,
@@ -347,7 +444,11 @@ class InterviewRepository:
         return InterviewSessionEntity(
             id=orm_obj.id,
             sessionId=orm_obj.session_id,
+            requestId=orm_obj.request_id,
             resumeId=orm_obj.resume_id,
+            skillId=orm_obj.skill_id,
+            difficulty=orm_obj.difficulty,
+            llmProvider=orm_obj.llm_provider,
             totalQuestions=orm_obj.total_questions,
             currentQuestionIndex=orm_obj.current_question_index,
             status=SessionStatus(orm_obj.status.value),

@@ -37,7 +37,11 @@ CREATE TABLE IF NOT EXISTS `resume_analyses` (
 CREATE TABLE IF NOT EXISTS `interview_sessions` (
   `id` INT NOT NULL AUTO_INCREMENT,
   `session_id` VARCHAR(36) NOT NULL,
-  `resume_id` INT NOT NULL,
+  `request_id` VARCHAR(64) NULL,
+  `resume_id` INT NULL,
+  `skill_id` VARCHAR(64) NOT NULL DEFAULT 'java-backend',
+  `difficulty` VARCHAR(16) NOT NULL DEFAULT 'mid',
+  `llm_provider` VARCHAR(50) NOT NULL DEFAULT 'default',
   `total_questions` INT NOT NULL,
   `current_question_index` INT NOT NULL DEFAULT 0,
   `status` ENUM('CREATED', 'IN_PROGRESS', 'COMPLETED', 'EVALUATED') NOT NULL DEFAULT 'CREATED',
@@ -53,7 +57,9 @@ CREATE TABLE IF NOT EXISTS `interview_sessions` (
   `evaluate_error` VARCHAR(500) NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_interview_sessions_session_id` (`session_id`),
+  UNIQUE KEY `uq_interview_sessions_request_id` (`request_id`),
   KEY `ix_interview_sessions_resume_id` (`resume_id`),
+  KEY `ix_interview_sessions_skill_created` (`skill_id`, `created_at`),
   CONSTRAINT `fk_interview_sessions_resume_id` FOREIGN KEY (`resume_id`) REFERENCES `resumes` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

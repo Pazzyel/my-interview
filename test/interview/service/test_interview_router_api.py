@@ -54,7 +54,7 @@ def test_create_session_api_returns_session(api_client_and_context: tuple[TestCl
 
     response = client.post(
         "/api/interview/sessions",
-        json={"resumeText": "简历文本", "questionCount": 1, "resumeId": 1, "forceCreate": False},
+        json={"resumeText": "简历文本", "questionCount": 3, "resumeId": 1, "forceCreate": False},
     )
 
     assert response.status_code == 200
@@ -62,6 +62,16 @@ def test_create_session_api_returns_session(api_client_and_context: tuple[TestCl
     assert payload["code"] == 200
     assert payload["data"]["sessionId"] == "session-1"
     assert context.interview_agent_service.create_session.await_count == 1
+
+
+def test_list_sessions_api_uses_camel_case_result(api_client_and_context: tuple[TestClient, InterviewApiTestContext]) -> None:
+    client, context = api_client_and_context
+
+    response = client.get("/api/interview/sessions")
+
+    assert response.status_code == 200
+    assert response.json() == {"code": 200, "message": "Success", "data": []}
+    context.interview_agent_service.list_sessions.assert_awaited_once()
 
 
 # 测试了什么功能：获取当前问题接口会返回当前问题并透传服务层结果。

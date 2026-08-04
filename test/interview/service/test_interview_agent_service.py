@@ -5,7 +5,7 @@
 import sys
 from pathlib import Path
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
 
@@ -56,10 +56,10 @@ def test_create_session_success(agent_service_env):
     req = CreateInterviewRequest(
         resume_id=1,
         resume_text="My Resume",
-        question_count=2,
+        question_count=3,
         force_create=True
     )
-    repo.list_historical_questions_by_resume_id.return_value = ["OldQ1"]
+    repo.list_historical_questions.return_value = ["OldQ1"]
 
     result = asyncio.run(service.create_session(db, req))
 
@@ -70,8 +70,14 @@ def test_create_session_success(agent_service_env):
     # 确认调用子服务生成问题
     service.question_agent_service.generate_questions.assert_awaited_once_with(
         resume_text="My Resume",
-        question_count=2,
-        historical_questions=["OldQ1"]
+        question_count=3,
+        historical_questions=["OldQ1"],
+        session_id=ANY,
+        skill_id="java-backend",
+        difficulty=ANY,
+        custom_categories=None,
+        jd_text=None,
+        llm_provider="default",
     )
 
 
@@ -80,7 +86,7 @@ def test_create_session_reuse_unfinished(agent_service_env):
     db = AsyncMock()
     # 模拟有未完成的会话
     mock_entity = build_mock_session_entity(session_id="unfinished-sess")
-    repo.find_unfinished_by_resume_id.return_value = mock_entity
+    repo.find_unfinished.return_value = mock_entity
     
     req = CreateInterviewRequest(resume_id=1, resume_text="My Resume", force_create=False)
     
@@ -90,6 +96,29 @@ def test_create_session_reuse_unfinished(agent_service_env):
     assert result.session_id == "unfinished-sess"
     # 没有生成新的
     repo.create_session.assert_not_awaited()
+
+
+def test_create_session_request_id_is_idempotent(agent_service_env):
+    service, repo, _ = agent_service_env
+    db = AsyncMock()
+    repo.find_by_request_id.return_value = build_mock_session_entity(session_id="idempotent-sess")
+
+    result = asyncio.run(service.create_session(
+        db,
+        CreateInterviewRequest(request_id="request_1234", skill_id="java-backend"),
+    ))
+
+    assert result.session_id == "idempotent-sess"
+    repo.create_session.assert_not_awaited()
+    service.question_agent_service.generate_questions.assert_not_awaited()
+
+
+def test_create_session_rejects_invalid_request_id(agent_service_env):
+    service, _, _ = agent_service_env
+    with pytest.raises(BusinessException):
+        asyncio.run(service.create_session(
+            AsyncMock(), CreateInterviewRequest(request_id="bad id", skill_id="java-backend")
+        ))
 
 
 def test_get_current_question_advance_status(agent_service_env):

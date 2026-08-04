@@ -124,6 +124,7 @@ def test_fallback_questions(question_service: InterviewQuestionAgentService):
     result = asyncio.run(question_service._node_fallback_questions(state))
     
     questions = result.update["questions"]
-    assert len(questions) == 2
-    assert questions[0].type == QuestionType.PROJECT
-    assert questions[1].type == QuestionType.MYSQL
+    # 每道主问题都带一条追问，因此线性题目列表包含 2 主问 + 2 追问。
+    assert len(questions) == 4
+    assert questions[0].is_follow_up is False
+    assert questions[1].is_follow_up is True

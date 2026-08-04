@@ -80,7 +80,8 @@ def test_evaluate_answers_success(mock_load_prompt, evaluate_service: InterviewE
     
     assert result.goto == "__end__"
     report = result.update["report"]
-    assert report.overall_score == 90
+    # 总分由逐题得分确定性计算，避免不同批次的模型总分漂移。
+    assert report.overall_score == 100
     assert report.overall_feedback == "Great job"
     assert len(report.question_details) == 1
     assert report.question_details[0].score == 100
@@ -119,4 +120,4 @@ def test_fallback_report(evaluate_service: InterviewEvaluationAgentService):
     report = result.update["report"]
     assert report.overall_score == 0
     assert report.question_details[0].score == 0
-    assert report.question_details[0].feedback == "未完成评估"
+    assert report.question_details[0].feedback == "未作答，计 0 分"
