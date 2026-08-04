@@ -7,7 +7,7 @@ from langgraph.types import Checkpointer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.exceptions import BusinessException, ErrorCode
-from common.llm_provider import AiConfigLlmProviderResolver, LlmProviderResolver
+from common.llm_provider import LlmProviderRegistry, LlmProviderResolver
 from common.models import AsyncTaskStatus
 from modules.interview.listener.evaluate_message_producer import EvaluateMessageProducer
 from modules.interview.model.interview_agent_dto import (
@@ -40,7 +40,7 @@ class InterviewAgentService:
         self.interview_repository = interview_repository
         self.evaluate_message_producer = evaluate_message_producer
         self.skill_service = skill_service or InterviewSkillService()
-        self.llm_provider_resolver = llm_provider_resolver or AiConfigLlmProviderResolver()
+        self.llm_provider_resolver = llm_provider_resolver or LlmProviderRegistry()
         self.creation_coordinator = creation_coordinator or InterviewCreationCoordinator()
         self.question_agent_service = InterviewQuestionAgentService(self.skill_service, self.llm_provider_resolver)
         self.evaluation_agent_service = InterviewEvaluationAgentService(self.llm_provider_resolver)

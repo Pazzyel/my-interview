@@ -1,3 +1,32 @@
+CREATE TABLE IF NOT EXISTS `llm_provider_config` (
+  `id` VARCHAR(64) NOT NULL,
+  `base_url` VARCHAR(512) NOT NULL,
+  `api_key_ciphertext` VARCHAR(4096) NOT NULL,
+  `api_key_nonce` VARCHAR(64) NOT NULL,
+  `model` VARCHAR(128) NOT NULL,
+  `embedding_model` VARCHAR(128) NULL,
+  `embedding_dimensions` INT NULL,
+  `supports_embedding` BOOLEAN NOT NULL DEFAULT FALSE,
+  `temperature` DOUBLE NOT NULL DEFAULT 0,
+  `enabled` BOOLEAN NOT NULL DEFAULT TRUE,
+  `builtin` BOOLEAN NOT NULL DEFAULT FALSE,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `llm_global_setting` (
+  `id` INT NOT NULL DEFAULT 1,
+  `default_chat_provider_id` VARCHAR(64) NOT NULL,
+  `default_embedding_provider_id` VARCHAR(64) NOT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  CONSTRAINT `fk_llm_default_chat_provider` FOREIGN KEY (`default_chat_provider_id`) REFERENCES `llm_provider_config` (`id`),
+  CONSTRAINT `fk_llm_default_embedding_provider` FOREIGN KEY (`default_embedding_provider_id`) REFERENCES `llm_provider_config` (`id`),
+  CONSTRAINT `ck_llm_global_setting_singleton` CHECK (`id` = 1)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS `resumes` (
   `id` INT NOT NULL AUTO_INCREMENT,
   `fileHash` VARCHAR(255) NOT NULL,

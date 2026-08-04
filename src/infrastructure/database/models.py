@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Table, Boolean
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Table, Boolean, Float
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from common.models import AsyncTaskStatus
@@ -10,6 +10,42 @@ from modules.knowledgebase.model.knowledgebase_entity import VectorStatus
 
 class Base(DeclarativeBase):
     pass
+
+
+class LlmProviderConfigORM(Base):
+    __tablename__ = "llm_provider_config"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    base_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    api_key_ciphertext: Mapped[str] = mapped_column(String(4096), nullable=False)
+    api_key_nonce: Mapped[str] = mapped_column(String(64), nullable=False)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    embedding_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    embedding_dimensions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    supports_embedding: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    temperature: Mapped[float] = mapped_column(Float, default=0, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    builtin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, onupdate=datetime.now, nullable=False
+    )
+
+
+class LlmGlobalSettingORM(Base):
+    __tablename__ = "llm_global_setting"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    default_chat_provider_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("llm_provider_config.id"), nullable=False
+    )
+    default_embedding_provider_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("llm_provider_config.id"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, onupdate=datetime.now, nullable=False
+    )
 
 class ResumeORM(Base):
     __tablename__ = 'resumes'

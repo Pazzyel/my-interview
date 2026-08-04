@@ -1,9 +1,16 @@
 from typing import List
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class AppConfigProperties(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # Dynamic LLM provider center. The encryption key is deliberately optional
+    # during module import and is validated by the application lifespan.
+    llm_provider_encryption_key: str | None = None
+    llm_provider_bootstrap_json: str | None = None
+    llm_default_chat_provider: str | None = None
+    llm_default_embedding_provider: str | None = None
     allowed_types: List[str] = [
         "application/pdf",
         "application/msword",
@@ -57,7 +64,14 @@ class AppConfigProperties(BaseSettings):
     elasticsearch_index_name: str = "smart_service"
     elasticsearch_query_mode: str = "dense_vector"
 
-    class Config:
-        env_file = ".env"
+    # Knowledge-base runtime tuning (model credentials live in the provider DB).
+    kb_embedding_batch_size: int = 10
+    kb_short_query_length: int = 4
+    kb_mid_query_length: int = 12
+    kb_top_k_short: int = 20
+    kb_top_k_medium: int = 12
+    kb_top_k_long: int = 8
+    kb_min_score_short: float = 0.18
+    kb_min_score_default: float = 0.28
 
 app_config = AppConfigProperties()

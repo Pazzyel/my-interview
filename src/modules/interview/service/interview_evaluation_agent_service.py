@@ -9,7 +9,7 @@ from langgraph.graph import add_messages
 from langgraph.types import Checkpointer, Command
 from pydantic import BaseModel, Field
 
-from common.llm_provider import AiConfigLlmProviderResolver, LlmProviderResolver
+from common.llm_provider import LlmProviderRegistry, LlmProviderResolver
 from infrastructure.prompt.prompt_service import has_short_memory, load_prompt
 from modules.interview.model.interview_agent_dto import (
     CategoryScoreDTO,
@@ -41,7 +41,7 @@ class InterviewEvaluationAgentService:
     BATCH_SIZE = 8
 
     def __init__(self, llm_provider_resolver: LlmProviderResolver | None = None) -> None:
-        self.llm_provider_resolver = llm_provider_resolver or AiConfigLlmProviderResolver()
+        self.llm_provider_resolver = llm_provider_resolver or LlmProviderRegistry()
         self._graph_ready = False
         self._chat_model: Any | None = None
 
@@ -88,7 +88,7 @@ class InterviewEvaluationAgentService:
         provider: str | None, reference_context: str,
     ) -> InterviewEvaluationLLMOutput:
         prompt = await load_prompt("interview-report-evaluate", False)
-        chain = prompt | self._model(provider).with_structured_output(InterviewEvaluationLLMOutput)
+        chain = prompt | (await self._model(provider)).with_structured_output(InterviewEvaluationLLMOutput)
         payload = [{
             "questionIndex": item.question_index,
             "question": item.question,
@@ -110,7 +110,7 @@ class InterviewEvaluationAgentService:
     ) -> InterviewEvaluationSummaryLLMOutput:
         try:
             prompt = await load_prompt("interview-report-summary", False)
-            chain = prompt | self._model(provider).with_structured_output(InterviewEvaluationSummaryLLMOutput)
+            chain = prompt | (await self._model(provider)).with_structured_output(InterviewEvaluationSummaryLLMOutput)
             result = await chain.ainvoke({
                 "overallScore": overall_score,
                 "evaluationDetails": json.dumps(
@@ -197,5 +197,5 @@ class InterviewEvaluationAgentService:
     async def _node_fallback_report(self, state: InterviewEvaluateGraphState) -> Command:
         return Command(update={"report": self._fallback_report(state.session_id, state.questions)}, goto="__end__")
 
-    def _model(self, provider: str | None) -> Any:
-        return self._chat_model or self.llm_provider_resolver.resolve(provider)
+    async def _model(self, provider: str | None) -> Any:
+        return self._chat_model or await self.llm_provider_resolver.resolve(provider)

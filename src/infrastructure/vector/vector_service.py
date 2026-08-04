@@ -4,7 +4,8 @@ from typing import List, Optional
 from langchain_core.documents import Document
 
 from common.config import app_config
-from infrastructure.vector.vector_store import vector_store, VectorStore
+from common.llm_provider import LlmProviderRegistry
+from infrastructure.vector.vector_store import create_vector_store, VectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -21,14 +22,25 @@ class VectorService:
     当前默认持有 Elasticsearch 的 VectorStore，后续替换向量库仅需在 VectorStore 侧调整。
     """
 
-    def __init__(self, store: Optional[VectorStore] = None) -> None:
-        self._store: VectorStore = store or vector_store
+    def __init__(self, store: Optional[VectorStore] = None, registry: LlmProviderRegistry | None = None) -> None:
+        self._store: VectorStore | None = store
+        self._registry = registry or LlmProviderRegistry()
+        self._embedding_identity: int | None = None
+
+    async def _current_store(self) -> VectorStore:
+        if self._store is not None and self._embedding_identity is None:
+            return self._store
+        embedding = await self._registry.get_default_embedding_model()
+        if self._store is None or self._embedding_identity != id(embedding):
+            self._store = create_vector_store(embedding)
+            self._embedding_identity = id(embedding)
+        return self._store
 
     async def add_documents(self, documents: List[Document]) -> None:
-        await self._store.aadd_documents(documents)
+        await (await self._current_store()).aadd_documents(documents)
 
-    def get_retriever(self, search_type: str = "similarity_score_threshold", search_kwargs: Optional[dict] = None):
-        return self._store.as_retriever(search_type=search_type, search_kwargs=search_kwargs)
+    async def get_retriever(self, search_type: str = "similarity_score_threshold", search_kwargs: Optional[dict] = None):
+        return (await self._current_store()).as_retriever(search_type=search_type, search_kwargs=search_kwargs)
 
     async def similar_search(
         self,
@@ -38,6 +50,7 @@ class VectorService:
         min_score: float,
     ) -> List[Document]:
         try:
+            store = await self._current_store()
             pre_filter = self._build_kb_filter(knowledgebase_ids) if knowledgebase_ids else None
             search_kwargs = {
                 "k": max(top_k, 1),
@@ -46,7 +59,7 @@ class VectorService:
             if pre_filter is not None:
                 search_kwargs["filter"] = pre_filter
 
-            retriever = self._store.as_retriever(
+            retriever = store.as_retriever(
                 search_type="similarity_score_threshold",
                 search_kwargs=search_kwargs,
             )
@@ -57,7 +70,7 @@ class VectorService:
             return await self._similar_search_fallback(query, knowledgebase_ids, top_k, min_score)
 
     async def delete_by_kb_id(self, knowledgebase_id: int) -> None:
-        es_client = self._store.client
+        es_client = (await self._current_store()).client
         await es_client.delete_by_query(
             index=app_config.elasticsearch_index_name,
             body={
@@ -77,7 +90,7 @@ class VectorService:
         top_k: int,
         min_score: float,
     ) -> List[Document]:
-        retriever = self._store.as_retriever(
+        retriever = (await self._current_store()).as_retriever(
             search_type="similarity_score_threshold",
             search_kwargs={
                 "k": max(top_k * 3, top_k),

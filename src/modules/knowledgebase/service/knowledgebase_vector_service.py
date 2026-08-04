@@ -5,14 +5,12 @@ import tiktoken
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from common.ai_config import ai_config
 from common.config import app_config
 from common.exceptions import BusinessException, ErrorCode
 from infrastructure.vector.vector_service import VectorService
 
 logger = logging.getLogger(__name__)
 
-MAX_BATCH_SIZE = ai_config.MAX_BATCH_SIZE
 tokenizer = tiktoken.get_encoding(app_config.tokenizer_name)
 
 def token_length_function(content: str) -> int:
@@ -56,15 +54,16 @@ class KnowledgeBaseVectorService:
 
             # 3. 分批向量化并存储（嵌入模型 API 限制 batch size）
             total_chunks = len(documents)
-            batch_count = (total_chunks + MAX_BATCH_SIZE - 1) // MAX_BATCH_SIZE  # 向上取整
+            batch_size = app_config.kb_embedding_batch_size
+            batch_count = (total_chunks + batch_size - 1) // batch_size  # 向上取整
             logger.info(
                 "开始分批向量化: 总共 %s 个 chunks，分 %s 批处理，每批最多 %s 个",
-                total_chunks, batch_count, MAX_BATCH_SIZE,
+                total_chunks, batch_count, batch_size,
             )
 
             for i in range(batch_count):
-                start = i * MAX_BATCH_SIZE
-                end = min(start + MAX_BATCH_SIZE, total_chunks)
+                start = i * batch_size
+                end = min(start + batch_size, total_chunks)
                 batch = documents[start:end]
                 logger.debug("处理第 %s/%s 批: chunks %s-%s, 第一篇文档长度=%s", i + 1, batch_count, start + 1, end, len(batch[0].page_content))
                 await self.vector_service.add_documents(batch)
