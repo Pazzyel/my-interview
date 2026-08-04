@@ -10,6 +10,7 @@ from modules.interview.service.interview_agent_service import InterviewAgentServ
 from modules.interview.service.interview_evaluate_consumer_service import InterviewEvaluateConsumerService
 from modules.interview.service.interview_history_service import InterviewHistoryService
 from modules.interview.service.interview_persistence_service import InterviewPersistenceService
+from modules.interview.service.interview_skill_service import InterviewSkillService
 from modules.knowledgebase.listener.vectorize_message_consumer import VectorizeMessageConsumer
 from modules.knowledgebase.listener.vectorize_message_producer import VectorizeMessageProducer
 # ────── Knowledge Base imports ──────
@@ -50,6 +51,7 @@ resume_repository = ResumeRepository()
 interview_repository = InterviewRepository()
 interview_persistence_service = InterviewPersistenceService(interview_repository)
 interview_history_service = InterviewHistoryService(interview_repository)
+interview_skill_service = InterviewSkillService()
 evaluate_message_producer = EvaluateMessageProducer(interview_repository)
 interview_agent_service = InterviewAgentService(interview_repository, evaluate_message_producer)
 interview_evaluate_consumer_service = InterviewEvaluateConsumerService(interview_agent_service, interview_repository)
