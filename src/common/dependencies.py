@@ -12,7 +12,10 @@ from modules.interview.service.interview_history_service import InterviewHistory
 from modules.interview.service.interview_persistence_service import InterviewPersistenceService
 from modules.interview.service.interview_skill_service import InterviewSkillService
 from modules.interview.service.interview_creation_coordinator import InterviewCreationCoordinator
-from common.llm_provider import AiConfigLlmProviderResolver
+from modules.llmprovider.repository.llm_provider_repository import LlmProviderRepository
+from modules.llmprovider.service.api_key_encryption_service import ApiKeyEncryptionService
+from modules.llmprovider.service.llm_provider_registry import LlmProviderRegistry
+from modules.llmprovider.service.llm_provider_service import LlmProviderService
 from modules.knowledgebase.listener.vectorize_message_consumer import VectorizeMessageConsumer
 from modules.knowledgebase.listener.vectorize_message_producer import VectorizeMessageProducer
 # ────── Knowledge Base imports ──────
@@ -47,14 +50,28 @@ file_hash_service = FileHashService()
 document_parse_service = DocumentParseService()
 file_validation_service = FileValidationService()
 
+# ==================== Dynamic LLM Provider Center ====================
+
+llm_provider_repository = LlmProviderRepository()
+api_key_encryption_service = ApiKeyEncryptionService()
+llm_provider_registry = LlmProviderRegistry(
+    llm_provider_repository,
+    api_key_encryption_service,
+)
+llm_provider_service = LlmProviderService(
+    llm_provider_repository,
+    api_key_encryption_service,
+    llm_provider_registry,
+)
+
 # ==================== Resume Module ====================
 
 resume_repository = ResumeRepository()
 interview_repository = InterviewRepository()
 interview_persistence_service = InterviewPersistenceService(interview_repository)
 interview_history_service = InterviewHistoryService(interview_repository)
-interview_skill_service = InterviewSkillService()
-llm_provider_resolver = AiConfigLlmProviderResolver()
+interview_skill_service = InterviewSkillService(llm_provider_resolver=llm_provider_registry)
+llm_provider_resolver = llm_provider_registry
 interview_creation_coordinator = InterviewCreationCoordinator()
 evaluate_message_producer = EvaluateMessageProducer(interview_repository)
 interview_agent_service = InterviewAgentService(
@@ -68,7 +85,7 @@ interview_evaluate_consumer_service = InterviewEvaluateConsumerService(interview
 evaluate_message_consumer = EvaluateMessageConsumer(interview_evaluate_consumer_service, evaluate_message_producer)
 
 analyze_message_producer = AnalyzeMessageProducer(resume_repository)
-resume_grading_service = ResumeGradingService()
+resume_grading_service = ResumeGradingService(llm_provider_registry)
 resume_analyze_consumer_service = ResumeAnalyzeConsumerService(resume_repository, resume_grading_service)
 analyze_message_consumer = AnalyzeMessageConsumer(resume_analyze_consumer_service, analyze_message_producer)
 resume_parse_service = ResumeParseService(document_parse_service, file_storage_service)
@@ -93,7 +110,7 @@ resume_delete_service = ResumeDeleteService(
 knowledgebase_repository = KnowledgeBaseRepository()
 rag_chat_repository = RagChatRepository()
 rag_chat_session_repository = RagChatSessionRepository()
-vector_service = VectorService()
+vector_service = VectorService(registry=llm_provider_registry)
 knowledgebase_vector_service = KnowledgeBaseVectorService(vector_service)
 
 knowledgebase_parse_service = KnowledgeBaseParseService(document_parse_service, file_storage_service)
@@ -125,5 +142,10 @@ knowledgebase_count_service = KnowledgeBaseCountService(knowledgebase_repository
 knowledgebase_delete_service = KnowledgeBaseDeleteService(
     knowledgebase_repository, rag_chat_repository, knowledgebase_vector_service, file_storage_service
 )
-knowledgebase_query_service = KnowledgeBaseQueryService(knowledgebase_list_service, knowledgebase_vector_service, knowledgebase_count_service)
+knowledgebase_query_service = KnowledgeBaseQueryService(
+    knowledgebase_list_service,
+    knowledgebase_vector_service,
+    knowledgebase_count_service,
+    llm_provider_registry,
+)
 rag_chat_session_service = RagChatSessionService(rag_chat_session_repository, knowledgebase_query_service)

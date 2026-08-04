@@ -10,6 +10,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import ValidationError
 
 from common.exceptions import BusinessException, ErrorCode
+from common.llm_provider import LlmProviderRegistry, LlmProviderResolver
 from common.prompt_security import DATA_BOUNDARY_INSTRUCTION, sanitize_prompt_data, wrap_prompt_data
 from modules.interview.model.interview_skill_dto import (
     CategoryDTO,
@@ -51,11 +52,13 @@ class InterviewSkillService:
         skills_root: Path | None = None,
         jd_prompt_path: Path | None = None,
         chat_model: Any | None = None,
+        llm_provider_resolver: LlmProviderResolver | None = None,
     ) -> None:
         project_root = Path(__file__).resolve().parents[4]
         self._skills_root = skills_root or project_root / "resources" / "skills"
         self._jd_prompt_path = jd_prompt_path or project_root / "resources" / "prompts" / "jd-parse-system.st"
         self._chat_model = chat_model
+        self._llm_provider_resolver = llm_provider_resolver or LlmProviderRegistry()
         self._preset_registry: dict[str, SkillDTO] = {}
         self._reference_cache: dict[Path, str] = {}
         self._category_ref_index: dict[str, RefMapping] = {}
@@ -159,7 +162,7 @@ class InterviewSkillService:
         )
 
         try:
-            model = self._get_chat_model().with_structured_output(CategoryListDTO)
+            model = (await self._get_chat_model()).with_structured_output(CategoryListDTO)
             raw_result = await model.ainvoke(
                 [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
             )
@@ -410,20 +413,8 @@ class InterviewSkillService:
             return content[: self.MAX_SINGLE_REFERENCE_CHARS] + "\n...（单文件内容已截断）"
         return content
 
-    def _get_chat_model(self) -> Any:
-        if self._chat_model is None:
-            from langchain_openai import ChatOpenAI
-            from pydantic import SecretStr
-
-            from common.ai_config import ai_config
-
-            self._chat_model = ChatOpenAI(
-                model=ai_config.chat_model_name,
-                api_key=SecretStr(ai_config.chat_api_key),
-                base_url=ai_config.base_url,
-                temperature=0,
-            )
-        return self._chat_model
+    async def _get_chat_model(self) -> Any:
+        return self._chat_model or await self._llm_provider_resolver.resolve(None)
 
     @classmethod
     def _is_safe_reference_path(cls, reference_file: str) -> bool:

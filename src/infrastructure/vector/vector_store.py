@@ -1,16 +1,17 @@
 from typing import TypeAlias
 
-from langchain_elasticsearch import AsyncElasticsearchStore, AsyncDenseVectorStrategy
+from langchain_elasticsearch import AsyncDenseVectorStrategy, AsyncElasticsearchStore
+from langchain_openai import OpenAIEmbeddings
 
-from common.ai_config import ai_config
 from common.config import app_config
 
 VectorStore: TypeAlias = AsyncElasticsearchStore
 
 
-vector_store: VectorStore = AsyncElasticsearchStore(
-    es_url=app_config.elasticsearch_url,
-    index_name=app_config.elasticsearch_index_name,
-    embedding=ai_config.embeddings,
-    strategy=AsyncDenseVectorStrategy(),
-)
+def create_vector_store(embedding: OpenAIEmbeddings) -> VectorStore:
+    return AsyncElasticsearchStore(
+        es_url=app_config.elasticsearch_url,
+        index_name=app_config.elasticsearch_index_name,
+        embedding=embedding,
+        strategy=AsyncDenseVectorStrategy(),
+    )

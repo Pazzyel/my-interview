@@ -13,18 +13,21 @@ from common.dependencies import (
     vectorize_message_consumer,
     interview_agent_service,
     evaluate_message_consumer,
+    llm_provider_service,
 )
 from common.exceptions import BusinessException
 from modules.interview.router import interview_router
 from modules.interview.router import interview_skill_router
 from modules.knowledgebase.router import knowledgebase_router, rag_chat_router
 from modules.resume.router import resume_router
+from modules.llmprovider.router import llm_provider_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await llm_provider_service.initialize()
     async with AIOMySQLSaver.from_conn_string(app_config.DB_URI) as checkpointer:
         await checkpointer.setup()
         await knowledgebase_query_service.build_graph(checkpointer)
@@ -47,6 +50,7 @@ app.include_router(knowledgebase_router.router)
 app.include_router(rag_chat_router.router)
 app.include_router(interview_router.router)
 app.include_router(interview_skill_router.router)
+app.include_router(llm_provider_router.router)
 
 @app.exception_handler(BusinessException)
 async def business_exception_handler(request: Request, exc: BusinessException):

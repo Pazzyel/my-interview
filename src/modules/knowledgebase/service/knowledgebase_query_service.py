@@ -4,7 +4,6 @@ import re
 from typing import Optional, List, AsyncGenerator, Annotated
 
 import regex
-from langchain_openai import ChatOpenAI
 from langchain_core.documents import Document
 from langchain_core.messages import AnyMessage
 from langchain_core.prompts import ChatPromptTemplate
@@ -13,10 +12,11 @@ from langgraph.constants import START, END
 from langgraph.graph import StateGraph, add_messages
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command, Checkpointer
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from common.ai_config import ai_config
+from common.config import app_config
+from common.llm_provider import LlmProviderRegistry, LlmProviderResolver
 from infrastructure.database.connection import async_session_factory
 from infrastructure.prompt.prompt_service import load_prompt, has_short_memory, Role
 from modules.knowledgebase.model.query_request import QueryRequest
@@ -24,12 +24,6 @@ from modules.knowledgebase.model.query_response import QueryResponse
 from modules.knowledgebase.service.knowledgebase_list_service import KnowledgeBaseListService
 from modules.knowledgebase.service.knowledgebase_vector_service import KnowledgeBaseVectorService
 from modules.knowledgebase.service.knowledgebase_count_service import KnowledgeBaseCountService
-
-llm = ChatOpenAI(
-    model = ai_config.chat_model_name,
-    api_key = SecretStr(ai_config.chat_api_key),
-    base_url = ai_config.base_url,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -108,12 +102,14 @@ def check_answer(answer: str) -> str:
     return answer.strip()
 
 class KnowledgeBaseQueryService:
-    def __init__(self, knowledgebase_list_service: KnowledgeBaseListService, knowledgebase_vector_service: KnowledgeBaseVectorService, knowledgebase_count_service: KnowledgeBaseCountService):
+    def __init__(self, knowledgebase_list_service: KnowledgeBaseListService, knowledgebase_vector_service: KnowledgeBaseVectorService, knowledgebase_count_service: KnowledgeBaseCountService, llm_provider_resolver: LlmProviderResolver | None = None):
         # self.app = build_workflow()
         self.app = None
         self.knowledgebase_list_service = knowledgebase_list_service
         self.knowledgebase_vector_service = knowledgebase_vector_service
         self.knowledgebase_count_service = knowledgebase_count_service
+        self.llm_provider_resolver = llm_provider_resolver or LlmProviderRegistry()
+        self._chat_model = None
 
     async def build_graph(self, checkpointer: Checkpointer) -> None:
         self.app = await self.build_workflow(checkpointer)
@@ -199,7 +195,8 @@ class KnowledgeBaseQueryService:
         # 2. LLM重写查询
         existing_short_memory: bool = has_short_memory(config)
         prompt_template: ChatPromptTemplate = await load_prompt("knowledgebase-query-rewrite",existing_short_memory)
-        chain = prompt_template | llm
+        model = self._chat_model or await self.llm_provider_resolver.resolve(None)
+        chain = prompt_template | model
         try:
             if existing_short_memory:
                 response = await chain.ainvoke({
@@ -219,20 +216,20 @@ class KnowledgeBaseQueryService:
         # 3. 构建状态
         candidate_queries = [rewritten_query, origin_query]
         compact_length = len(re.sub(r"\s+","",origin_query)) # 去除用户输入空格之后的字符串
-        if compact_length <= ai_config.short_query_length:
+        if compact_length <= app_config.kb_short_query_length:
             search_params = {
-                "top_k": ai_config.top_k_short,
-                "min_score": ai_config.min_score_short,
+                "top_k": app_config.kb_top_k_short,
+                "min_score": app_config.kb_min_score_short,
             }
-        elif compact_length <= ai_config.mid_query_length:
+        elif compact_length <= app_config.kb_mid_query_length:
             search_params = {
-                "top_k": ai_config.top_k_medium,
-                "min_score": ai_config.min_score_default,
+                "top_k": app_config.kb_top_k_medium,
+                "min_score": app_config.kb_min_score_default,
             }
         else:
             search_params = {
-                "top_k": ai_config.top_k_long,
-                "min_score": ai_config.min_score_default,
+                "top_k": app_config.kb_top_k_long,
+                "min_score": app_config.kb_min_score_default,
             }
 
         return Command(
@@ -285,7 +282,8 @@ class KnowledgeBaseQueryService:
         system_prompt: ChatPromptTemplate = await load_prompt("knowledgebase-query-system", exists_short_memory)
         user_prompt: ChatPromptTemplate = await load_prompt("knowledgebase-query-user", exists_short_memory)
 
-        chain = (system_prompt + user_prompt) | llm
+        model = self._chat_model or await self.llm_provider_resolver.resolve(None)
+        chain = (system_prompt + user_prompt) | model
         try:
             if exists_short_memory:
                 answer = await chain.ainvoke({

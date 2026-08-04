@@ -9,7 +9,7 @@ from langgraph.types import Checkpointer, Command
 from pydantic import BaseModel, Field
 
 from common.exceptions import BusinessException, ErrorCode
-from common.llm_provider import AiConfigLlmProviderResolver, LlmProviderResolver
+from common.llm_provider import LlmProviderRegistry, LlmProviderResolver
 from common.prompt_security import sanitize_prompt_data, wrap_prompt_data
 from infrastructure.prompt.prompt_service import has_short_memory, load_prompt
 from modules.interview.model.interview_agent_dto import Difficulty, HistoricalQuestion, InterviewQuestionDTO
@@ -45,7 +45,7 @@ class InterviewQuestionAgentService:
         llm_provider_resolver: LlmProviderResolver | None = None,
     ) -> None:
         self.skill_service = skill_service or InterviewSkillService()
-        self.llm_provider_resolver = llm_provider_resolver or AiConfigLlmProviderResolver()
+        self.llm_provider_resolver = llm_provider_resolver or LlmProviderRegistry()
         self._graph_ready = False
         self._chat_model: Any | None = None  # compatibility injection point for unit tests
 
@@ -109,7 +109,7 @@ class InterviewQuestionAgentService:
     ) -> InterviewQuestionLLMOutput:
         allocation = self.skill_service.calculate_allocation(skill.categories, count)
         prompt = await load_prompt("interview-question-skill", has_short_memory(config))
-        chain = prompt | self._model(state.llm_provider).with_structured_output(InterviewQuestionLLMOutput)
+        chain = prompt | (await self._model(state.llm_provider)).with_structured_output(InterviewQuestionLLMOutput)
         result = await chain.ainvoke({
             "persona": skill.persona or "你是一名严谨的技术面试官。",
             "skillName": skill.name,
@@ -132,7 +132,7 @@ class InterviewQuestionAgentService:
         self, state: InterviewQuestionGraphState, count: int, config: RunnableConfig
     ) -> InterviewQuestionLLMOutput:
         prompt = await load_prompt("interview-question-resume", has_short_memory(config))
-        chain = prompt | self._model(state.llm_provider).with_structured_output(InterviewQuestionLLMOutput)
+        chain = prompt | (await self._model(state.llm_provider)).with_structured_output(InterviewQuestionLLMOutput)
         result = await chain.ainvoke({
             "resumeText": wrap_prompt_data("resume", sanitize_prompt_data(state.resume_text)),
             "difficulty": self._difficulty_description(state.difficulty),
@@ -225,8 +225,8 @@ class InterviewQuestionAgentService:
         questions = self._build_fallback_questions(max(1, state.question_count), self._resolve_skill(state))
         return Command(update={"questions": questions, "generated": []}, goto="__end__")
 
-    def _model(self, provider: str | None) -> Any:
-        return self._chat_model or self.llm_provider_resolver.resolve(provider)
+    async def _model(self, provider: str | None) -> Any:
+        return self._chat_model or await self.llm_provider_resolver.resolve(provider)
 
     @staticmethod
     def _difficulty_description(difficulty: Difficulty) -> str:

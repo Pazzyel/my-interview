@@ -1,11 +1,9 @@
 import logging
 from typing import Dict, List, cast
 
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from pydantic import SecretStr
 
-from common.ai_config import ai_config
+from common.llm_provider import LlmProviderRegistry, LlmProviderResolver
 from infrastructure.prompt.prompt_service import load_prompt
 from modules.resume.model.resume_entity import ResumeAnalysisResponse
 from modules.resume.model.resume_grading_dto import ResumeAnalysisStructuredResponseDTO
@@ -16,13 +14,9 @@ logger = logging.getLogger(__name__)
 class ResumeGradingService:
     """简历评分服务 / Resume grading service."""
 
-    def __init__(self) -> None:
-        self._chat_model: ChatOpenAI = ChatOpenAI(
-            model=ai_config.chat_model_name,
-            api_key=SecretStr(ai_config.chat_api_key),
-            base_url=ai_config.base_url,
-            temperature=0,
-        )
+    def __init__(self, llm_provider_resolver: LlmProviderResolver | None = None) -> None:
+        self._llm_provider_resolver = llm_provider_resolver or LlmProviderRegistry()
+        self._chat_model = None  # unit-test injection point
         self._prompt_node_name: str = "resume-analysis"
 
     async def analyze_resume(self, resume_text: str) -> ResumeAnalysisResponse:
@@ -39,7 +33,8 @@ class ResumeGradingService:
         """
         # 1. 加载统一 YAML Prompt 模板并构建链路
         try:
-            structured_llm = self._chat_model.with_structured_output(ResumeAnalysisStructuredResponseDTO)
+            model = self._chat_model or await self._llm_provider_resolver.resolve(None)
+            structured_llm = model.with_structured_output(ResumeAnalysisStructuredResponseDTO)
             prompt_template: ChatPromptTemplate = await load_prompt(self._prompt_node_name, False)
             chain = prompt_template | structured_llm
             llm_result: ResumeAnalysisStructuredResponseDTO = cast(
