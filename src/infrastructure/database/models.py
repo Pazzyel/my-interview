@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Table, Boolean, Float
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Table, Boolean, Float, Index, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from common.models import AsyncTaskStatus
@@ -147,6 +147,132 @@ class InterviewAnswerORM(Base):
     answered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     session: Mapped[InterviewSessionORM] = relationship("InterviewSessionORM", back_populates="answers")
+
+
+class VoiceInterviewSessionStatus(str, Enum):
+    IN_PROGRESS = "IN_PROGRESS"
+    PAUSED = "PAUSED"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class VoiceInterviewPhase(str, Enum):
+    INTRO = "INTRO"
+    TECH = "TECH"
+    PROJECT = "PROJECT"
+    HR = "HR"
+    COMPLETED = "COMPLETED"
+
+
+class VoiceInterviewMessageType(str, Enum):
+    USER_SPEECH = "USER_SPEECH"
+    AI_SPEECH = "AI_SPEECH"
+    SYSTEM = "SYSTEM"
+    SUMMARY = "SUMMARY"
+
+
+class VoiceInterviewSessionORM(Base):
+    __tablename__ = "voice_interview_sessions"
+    __table_args__ = (
+        Index("ix_voice_sessions_user_created", "user_id", "created_at"),
+        Index("ix_voice_sessions_status_updated", "status", "updated_at"),
+        Index("ix_voice_sessions_evaluate_updated", "evaluate_status", "updated_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    # TODO(multi-user): reserved compatibility field; no authentication or ownership checks yet.
+    user_id: Mapped[str] = mapped_column(String(64), default="default", nullable=False)
+    role_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    skill_id: Mapped[str] = mapped_column(String(64), default="java-backend", nullable=False, index=True)
+    difficulty: Mapped[str] = mapped_column(String(16), default="mid", nullable=False)
+    custom_jd_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resume_id: Mapped[int | None] = mapped_column(
+        ForeignKey("resumes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    intro_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    tech_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    project_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    hr_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    llm_provider: Mapped[str] = mapped_column(String(50), default="default", nullable=False)
+    current_phase: Mapped[VoiceInterviewPhase] = mapped_column(
+        SQLEnum(VoiceInterviewPhase, name="voice_interview_phase", create_type=False), nullable=False
+    )
+    status: Mapped[VoiceInterviewSessionStatus] = mapped_column(
+        SQLEnum(VoiceInterviewSessionStatus, name="voice_interview_session_status", create_type=False),
+        default=VoiceInterviewSessionStatus.IN_PROGRESS, nullable=False,
+    )
+    planned_duration: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+    actual_duration: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_paused_seconds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    start_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
+    end_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    resumed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    evaluate_status: Mapped[AsyncTaskStatus | None] = mapped_column(
+        SQLEnum(AsyncTaskStatus, name="async_task_status", create_type=False), nullable=True
+    )
+    evaluate_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, onupdate=datetime.now, nullable=False
+    )
+
+    messages: Mapped[list["VoiceInterviewMessageORM"]] = relationship(
+        back_populates="session", cascade="all, delete-orphan", passive_deletes=True
+    )
+    evaluation: Mapped["VoiceInterviewEvaluationORM | None"] = relationship(
+        back_populates="session", cascade="all, delete-orphan", passive_deletes=True, uselist=False
+    )
+
+
+class VoiceInterviewMessageORM(Base):
+    __tablename__ = "voice_interview_messages"
+    __table_args__ = (
+        UniqueConstraint("session_id", "sequence_num", name="uq_voice_messages_session_sequence"),
+        Index("ix_voice_messages_session_type_sequence", "session_id", "message_type", "sequence_num"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("voice_interview_sessions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    message_type: Mapped[VoiceInterviewMessageType] = mapped_column(
+        SQLEnum(VoiceInterviewMessageType, name="voice_interview_message_type", create_type=False), nullable=False
+    )
+    phase: Mapped[VoiceInterviewPhase | None] = mapped_column(
+        SQLEnum(VoiceInterviewPhase, name="voice_interview_phase", create_type=False), nullable=True
+    )
+    user_recognized_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_generated_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sequence_num: Mapped[int] = mapped_column(Integer, nullable=False)
+    summary_covered_sequence: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
+
+    session: Mapped[VoiceInterviewSessionORM] = relationship(back_populates="messages")
+
+
+class VoiceInterviewEvaluationORM(Base):
+    __tablename__ = "voice_interview_evaluations"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("voice_interview_sessions.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
+    )
+    overall_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    overall_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    question_evaluations_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    strengths_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    improvements_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reference_answers_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    interviewer_role: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    interview_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, onupdate=datetime.now, nullable=False
+    )
+
+    session: Mapped[VoiceInterviewSessionORM] = relationship(back_populates="evaluation")
 
 class KnowledgeBaseORM(Base):
     __tablename__ = 'knowledge_bases'
