@@ -46,16 +46,6 @@ def _install_knowledgebase_service_stubs() -> None:
         )
         sys.modules["common.ai_config"] = ai_stub
 
-    # vector_store（被 vector_service 导入）
-    if "infrastructure.vector" not in sys.modules:
-        vec_pkg = types.ModuleType("infrastructure.vector")
-        vec_pkg.__path__ = []
-        sys.modules["infrastructure.vector"] = vec_pkg
-    if "infrastructure.vector.vector_store" not in sys.modules:
-        vs_stub = types.ModuleType("infrastructure.vector.vector_store")
-        vs_stub.vector_store = MagicMock()
-        sys.modules["infrastructure.vector.vector_store"] = vs_stub
-
     # prompt_service（被 query_service 导入）
     if "infrastructure.prompt" not in sys.modules:
         prompt_pkg = types.ModuleType("infrastructure.prompt")
