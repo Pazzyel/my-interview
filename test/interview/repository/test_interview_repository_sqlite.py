@@ -57,15 +57,26 @@ def test_create_and_find_by_session_id(sqlite_factory: InMemorySqliteSessionFact
                 resume_id=101,
                 total_questions=5,
                 questions_json='[{"q":"1"}]',
+                request_id="request_0001",
+                skill_id="frontend",
+                difficulty="senior",
+                llm_provider="reserved-provider",
             )
             await db.commit()
 
             session = await repo.find_by_session_id(db, "session-create-1")
             assert session is not None
             assert session.resumeId == 101
+            assert session.requestId == "request_0001"
+            assert session.skillId == "frontend"
+            assert session.difficulty == "senior"
+            assert session.llmProvider == "reserved-provider"
             assert session.totalQuestions == 5
             assert session.status.value == "CREATED"
             assert session.questionsJson == '[{"q":"1"}]'
+            by_request = await repo.find_by_request_id(db, "request_0001")
+            assert by_request is not None
+            assert by_request.sessionId == "session-create-1"
 
     _run(_scenario())
 

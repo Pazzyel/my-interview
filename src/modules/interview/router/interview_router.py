@@ -6,6 +6,7 @@ from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.dependencies import interview_agent_service, interview_history_service, interview_persistence_service
+from common.deprecated import deprecated
 from common.models import Result
 from infrastructure.database.connection import get_async_session
 from modules.interview.model.interview_agent_dto import (
@@ -15,6 +16,7 @@ from modules.interview.model.interview_agent_dto import (
     InterviewSessionDTO,
     SubmitAnswerRequest,
     SubmitAnswerResponse,
+    SessionListItemDTO,
 )
 from modules.interview.model.interview_dto import InterviewDetailDTO
 from modules.interview.model.interview_entity import InterviewSessionEntity
@@ -34,6 +36,15 @@ async def create_session(
     return Result.success(data=session)
 
 
+@router.get("/sessions", response_model=Result[list[SessionListItemDTO]])
+async def list_sessions(
+    db: AsyncSession = Depends(get_async_session),
+) -> Result[list[SessionListItemDTO]]:
+    logger.info("Request arrived: GET /api/interview/sessions")
+    sessions = await interview_agent_service.list_sessions(db)
+    return Result.success(data=sessions)
+
+
 @router.get("/sessions/{session_id}", response_model=Result[InterviewSessionDTO])
 async def get_session(
     session_id: str,
@@ -45,6 +56,7 @@ async def get_session(
 
 
 @router.get("/sessions/{session_id}/question", response_model=Result[CurrentQuestionResponse])
+@deprecated("新版前端直接从会话对象读取当前题目；该兼容接口将在后续版本移除")
 async def get_current_question(
     session_id: str,
     db: AsyncSession = Depends(get_async_session),
@@ -66,6 +78,7 @@ async def submit_answer(
 
 
 @router.put("/sessions/{session_id}/answers", response_model=Result[None])
+@deprecated("新版前端不再调用单独暂存接口；该兼容接口将在后续版本移除")
 async def save_answer(
     session_id: str,
     request: SubmitAnswerRequest,
@@ -87,6 +100,7 @@ async def complete_interview(
 
 
 @router.get("/sessions/{session_id}/report", response_model=Result[InterviewReportDTO])
+@deprecated("新版前端通过详情接口轮询评估结果；该兼容接口将在后续版本移除")
 async def get_report(
     session_id: str,
     db: AsyncSession = Depends(get_async_session),
@@ -97,6 +111,7 @@ async def get_report(
 
 
 @router.get("/sessions/unfinished/{resume_id}", response_model=Result[InterviewSessionEntity])
+@deprecated("新版创建接口已内置未完成会话复用；该兼容接口将在后续版本移除")
 async def find_unfinished_session(
     resume_id: int,
     db: AsyncSession = Depends(get_async_session),

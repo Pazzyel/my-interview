@@ -56,4 +56,7 @@ interview-report-evaluate:
     [问答记录]
     {qaRecords}
 
+    [Skill 参考知识基线]
+    {referenceContext}
+
     请输出：总体评价、核心优势、改进建议、每题评分与反馈、参考答案。

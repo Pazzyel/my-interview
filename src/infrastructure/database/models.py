@@ -62,7 +62,11 @@ class InterviewSessionORM(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     session_id: Mapped[str] = mapped_column(String(36), unique=True, index=True, nullable=False)
-    resume_id: Mapped[int] = mapped_column(ForeignKey("resumes.id"), nullable=False, index=True)
+    request_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    resume_id: Mapped[int | None] = mapped_column(ForeignKey("resumes.id"), nullable=True, index=True)
+    skill_id: Mapped[str] = mapped_column(String(64), default="java-backend", index=True)
+    difficulty: Mapped[str] = mapped_column(String(16), default="mid")
+    llm_provider: Mapped[str] = mapped_column(String(50), default="default")
     total_questions: Mapped[int] = mapped_column(Integer, nullable=False)
     current_question_index: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[InterviewSessionStatus] = mapped_column(

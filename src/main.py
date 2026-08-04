@@ -16,6 +16,7 @@ from common.dependencies import (
 )
 from common.exceptions import BusinessException
 from modules.interview.router import interview_router
+from modules.interview.router import interview_skill_router
 from modules.knowledgebase.router import knowledgebase_router, rag_chat_router
 from modules.resume.router import resume_router
 
@@ -45,6 +46,7 @@ app.include_router(resume_router.router)
 app.include_router(knowledgebase_router.router)
 app.include_router(rag_chat_router.router)
 app.include_router(interview_router.router)
+app.include_router(interview_skill_router.router)
 
 @app.exception_handler(BusinessException)
 async def business_exception_handler(request: Request, exc: BusinessException):

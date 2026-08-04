@@ -30,7 +30,11 @@ class InterviewAnswerEntity(BaseModel):
 class InterviewSessionEntity(BaseModel):
     id: int | None = None
     sessionId: str
-    resumeId: int
+    requestId: str | None = None
+    resumeId: int | None = None
+    skillId: str = "java-backend"
+    difficulty: str = "mid"
+    llmProvider: str = "default"
     totalQuestions: int
     currentQuestionIndex: int = 0
     status: SessionStatus = SessionStatus.CREATED

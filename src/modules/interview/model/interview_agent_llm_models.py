@@ -1,11 +1,16 @@
+from pydantic import Field
+
 from infrastructure.model.BaseCamelSchema import BaseCamelSchema
 
+
 class InterviewQuestionLLMItem(BaseCamelSchema):
-    """AI面试官生成的问题"""
+    """Structured question produced by the interviewer model."""
+
     question: str
     type: str
     category: str
-    follow_ups: list[str] = []
+    topic_summary: str | None = None
+    follow_ups: list[str] = Field(default_factory=list)
 
 
 class InterviewQuestionLLMOutput(BaseCamelSchema):
@@ -13,12 +18,13 @@ class InterviewQuestionLLMOutput(BaseCamelSchema):
 
 
 class InterviewEvaluationLLMItem(BaseCamelSchema):
-    """单个问题的苹果结果"""
-    question_index: int # 问题在这轮面试的id
-    score: int          # 回答的评分
-    feedback: str       # 对回答的评价
-    reference_answer: str # 参考回答
-    key_points: list[str] = [] # 关键要点
+    """Structured evaluation for one interview question."""
+
+    question_index: int
+    score: int
+    feedback: str
+    reference_answer: str
+    key_points: list[str] = Field(default_factory=list)
 
 
 class InterviewEvaluationLLMOutput(BaseCamelSchema):
@@ -27,3 +33,9 @@ class InterviewEvaluationLLMOutput(BaseCamelSchema):
     strengths: list[str]
     improvements: list[str]
     question_evaluations: list[InterviewEvaluationLLMItem]
+
+
+class InterviewEvaluationSummaryLLMOutput(BaseCamelSchema):
+    overall_feedback: str
+    strengths: list[str]
+    improvements: list[str]

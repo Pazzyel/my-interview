@@ -21,6 +21,10 @@ class InterviewAnswerDetailDTO(BaseModel):
 class InterviewDetailDTO(BaseModel):
     id: int
     sessionId: str
+    resumeId: int | None = None
+    skillId: str = "java-backend"
+    difficulty: str = "mid"
+    llmProvider: str = "default"
     totalQuestions: int
     status: str
     evaluateStatus: AsyncTaskStatus | None = None
@@ -38,6 +42,10 @@ class InterviewDetailDTO(BaseModel):
 
 class InterviewHistoryItemDTO(BaseModel):
     sessionId: str
+    resumeId: int | None = None
+    skillId: str = "java-backend"
+    difficulty: str = "mid"
+    llmProvider: str = "default"
     status: str
     overallScore: int | None = None
     createdAt: datetime

@@ -1,294 +1,246 @@
+import asyncio
 import logging
-from typing import Annotated, cast
+from typing import Annotated, Any
 
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import AnyMessage
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableConfig
-from langgraph.constants import START, END
-from langgraph.graph import StateGraph, add_messages
-from langgraph.graph.state import CompiledStateGraph
+from langgraph.graph import add_messages
 from langgraph.types import Checkpointer, Command
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, Field
 
-from common.ai_config import ai_config
 from common.exceptions import BusinessException, ErrorCode
+from common.llm_provider import AiConfigLlmProviderResolver, LlmProviderResolver
+from common.prompt_security import sanitize_prompt_data, wrap_prompt_data
 from infrastructure.prompt.prompt_service import has_short_memory, load_prompt
-from modules.interview.model.interview_agent_dto import InterviewQuestionDTO, QuestionType
-from modules.interview.model.interview_agent_llm_models import (
-    InterviewQuestionLLMItem,
-    InterviewQuestionLLMOutput,
-)
-from modules.interview.model.interview_query_distribution import QuestionDistribution
+from modules.interview.model.interview_agent_dto import Difficulty, HistoricalQuestion, InterviewQuestionDTO
+from modules.interview.model.interview_agent_llm_models import InterviewQuestionLLMItem, InterviewQuestionLLMOutput
+from modules.interview.model.interview_skill_dto import CategoryDTO, SkillDTO
+from modules.interview.service.interview_skill_service import InterviewSkillService
 
 logger = logging.getLogger(__name__)
 
-MAX_FOLLOW_UP_COUNT: int = 2
-DEFAULT_FOLLOW_UP_COUNT: int = 1
-
-PROJECT_RATIO: float = 0.20
-MYSQL_RATIO: float = 0.20
-REDIS_RATIO: float = 0.20
-JAVA_BASIC_RATIO: float = 0.10
-JAVA_COLLECTION_RATIO: float = 0.10
-JAVA_CONCURRENT_RATIO: float = 0.10
-
 
 class InterviewQuestionGraphState(BaseModel):
-    resume_text: str # 简历文本内容
-    question_count: int # 问题的数量（持久化）
-    historical_questions: list[str] = [] # 历史问题
-    messages: Annotated[list[AnyMessage], add_messages] = [] # 其实一次就生成完了，没有必要更新这个字段。但是为了和load_prompt兼容，保留这个字段以供prompt调用
-    generated: list[InterviewQuestionLLMItem] = []
-    questions: list[InterviewQuestionDTO] = []
+    resume_text: str = ""
+    question_count: int = 6
+    historical_questions: list[HistoricalQuestion] = Field(default_factory=list)
+    skill_id: str = "java-backend"
+    difficulty: Difficulty = Difficulty.MID
+    custom_categories: list[CategoryDTO] | None = None
+    jd_text: str | None = None
+    llm_provider: str | None = None
+    messages: Annotated[list[AnyMessage], add_messages] = []
+    generated: list[InterviewQuestionLLMItem] = Field(default_factory=list)
+    questions: list[InterviewQuestionDTO] = Field(default_factory=list)
     error_message: str | None = None
 
+
 class InterviewQuestionAgentService:
-    def __init__(self) -> None:
-        self._graph: CompiledStateGraph | None = None
-        self._follow_up_count: int = min(max(DEFAULT_FOLLOW_UP_COUNT, 0), MAX_FOLLOW_UP_COUNT)
-        self._chat_model: ChatOpenAI = ChatOpenAI(
-            model=ai_config.chat_model_name,
-            api_key=SecretStr(ai_config.chat_api_key),
-            base_url=ai_config.base_url,
-            temperature=0,
-        )
+    FOLLOW_UP_COUNT = 1
+    RESUME_RATIO = 0.6
+
+    def __init__(
+        self,
+        skill_service: InterviewSkillService | None = None,
+        llm_provider_resolver: LlmProviderResolver | None = None,
+    ) -> None:
+        self.skill_service = skill_service or InterviewSkillService()
+        self.llm_provider_resolver = llm_provider_resolver or AiConfigLlmProviderResolver()
+        self._graph_ready = False
+        self._chat_model: Any | None = None  # compatibility injection point for unit tests
 
     async def build_graph(self, checkpointer: Checkpointer) -> None:
-        self._graph = await self._build_workflow(checkpointer)
+        _ = checkpointer
+        self._graph_ready = True
 
     async def generate_questions(
         self,
         resume_text: str,
         question_count: int,
-        historical_questions: list[str],
-        session_id: str
+        historical_questions: list[HistoricalQuestion] | list[str],
+        session_id: str,
+        skill_id: str = "java-backend",
+        difficulty: Difficulty = Difficulty.MID,
+        custom_categories: list[CategoryDTO] | None = None,
+        jd_text: str | None = None,
+        llm_provider: str | None = None,
     ) -> list[InterviewQuestionDTO]:
-        """问题生成节点，生成面试问题"""
-        if self._graph is None:
-            raise BusinessException(ErrorCode.SYSTEM_ERROR, "面试问题图尚未初始化")
-        state: InterviewQuestionGraphState = InterviewQuestionGraphState(
+        if question_count <= 0:
+            raise BusinessException(ErrorCode.BAD_REQUEST, "题目数量必须大于 0")
+        history = [
+            item if isinstance(item, HistoricalQuestion) else HistoricalQuestion(question=item, type="GENERAL")
+            for item in historical_questions
+        ]
+        state = InterviewQuestionGraphState(
             resume_text=resume_text,
             question_count=question_count,
-            historical_questions=historical_questions,
+            historical_questions=history,
+            skill_id=skill_id,
+            difficulty=difficulty,
+            custom_categories=custom_categories,
+            jd_text=jd_text,
+            llm_provider=llm_provider,
         )
-        config: RunnableConfig = {
-            "configurable": {"thread_id": f"interview-question-{session_id}"}
-        }
-        result_dict: dict = await self._graph.ainvoke(state, config=config)
-        result_state: InterviewQuestionGraphState = InterviewQuestionGraphState(**result_dict)
-        return result_state.questions
-
-    async def _build_workflow(self, checkpointer: Checkpointer) -> CompiledStateGraph:
-        workflow = StateGraph(InterviewQuestionGraphState)
-        workflow.add_node("prepare_question_context", self._node_prepare_question_context)
-        workflow.add_node("generate_questions", self._node_generate_questions)
-        workflow.add_node("normalize_questions", self._node_normalize_questions)
-        workflow.add_node("fallback_questions", self._node_fallback_questions)
-
-        workflow.add_edge(START, "prepare_question_context")
-        return workflow.compile(checkpointer=checkpointer)
-
-    async def _node_prepare_question_context(
-        self,
-        state: InterviewQuestionGraphState,
-        config: RunnableConfig,
-    ) -> Command:
-        """
-        校验出题输入是否可用，决定进入正常出题节点或兜底节点。
-
-        Validate question-generation input and route to normal generation
-        or fallback question node.
-        """
-        _ = config
-        if state.resume_text.strip() == "" or state.question_count <= 0:
-            return Command(
-                update={"error_message": "invalid_input"},
-                goto="fallback_questions",
-            )
-        return Command(
-            update={"error_message": None},
-            goto="generate_questions",
-        )
-
-    async def _node_generate_questions(
-        self,
-        state: InterviewQuestionGraphState,
-        config: RunnableConfig,
-    ) -> Command:
-        """
-        调用 LLM 生成结构化主问题与追问列表，并写入中间状态
-
-        Invoke LLM to generate structured main questions and follow-ups,
-        then store raw generated items in graph state.
-        """
-        prompt_template: ChatPromptTemplate = await load_prompt(
-            "interview-question-generate", has_short_memory(config)
-        )
-        history_text: str = (
-            "\n".join(state.historical_questions)
-            if len(state.historical_questions) > 0
-            else "暂无历史提问"
-        )
-        distribution: QuestionDistribution = self._calculate_distribution(state.question_count)
-        chain = prompt_template | self._chat_model.with_structured_output(
-            InterviewQuestionLLMOutput
-        )
+        config: RunnableConfig = {"configurable": {"thread_id": f"interview-question-{session_id}"}}
+        generated: list[InterviewQuestionLLMItem] = []
         try:
-            llm_output: InterviewQuestionLLMOutput = cast(InterviewQuestionLLMOutput, await chain.ainvoke(
-                {
-                    "resumeText": state.resume_text,
-                    "questionCount": state.question_count,
-                    "projectCount": distribution.project,
-                    "mysqlCount": distribution.mysql,
-                    "redisCount": distribution.redis,
-                    "javaBasicCount": distribution.java_basic,
-                    "javaCollectionCount": distribution.java_collection,
-                    "javaConcurrentCount": distribution.java_concurrent,
-                    "springCount": distribution.spring,
-                    "followUpCount": self._follow_up_count,
-                    "historicalQuestions": history_text,
-                    "messages": state.messages,
-                }
-            )) # 因为是with_structured_output，所以确信是子类
-            logger.info(f"LLM generated {llm_output.questions}")
-            return Command(
-                update={
-                    "generated": llm_output.questions,
-                    "error_message": None,
-                },
-                goto="normalize_questions",
-            )
+            skill = self._resolve_skill(state)
+            if resume_text.strip():
+                resume_count = max(1, round(question_count * self.RESUME_RATIO))
+                skill_count = max(0, question_count - resume_count)
+                tasks = [self._invoke_resume_generation(state, resume_count, config)]
+                if skill_count:
+                    tasks.append(self._invoke_skill_generation(state, skill, skill_count, config))
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                for result in results:
+                    if isinstance(result, InterviewQuestionLLMOutput):
+                        generated.extend(result.questions)
+                    elif isinstance(result, Exception):
+                        logger.warning("部分面试题生成失败: %s", result)
+            else:
+                generated.extend((await self._invoke_skill_generation(state, skill, question_count, config)).questions)
+            return self._normalize(generated, question_count, skill)
         except Exception as error:
-            logger.error("Interview question generation failed: %s", str(error), exc_info=True)
+            logger.error("面试题生成失败，使用兜底题目: %s", error, exc_info=True)
+            return self._build_fallback_questions(question_count, self._resolve_skill(state))
+
+    async def _invoke_skill_generation(
+        self, state: InterviewQuestionGraphState, skill: SkillDTO, count: int, config: RunnableConfig
+    ) -> InterviewQuestionLLMOutput:
+        allocation = self.skill_service.calculate_allocation(skill.categories, count)
+        prompt = await load_prompt("interview-question-skill", has_short_memory(config))
+        chain = prompt | self._model(state.llm_provider).with_structured_output(InterviewQuestionLLMOutput)
+        result = await chain.ainvoke({
+            "persona": skill.persona or "你是一名严谨的技术面试官。",
+            "skillName": skill.name,
+            "skillDescription": skill.description,
+            "difficulty": self._difficulty_description(state.difficulty),
+            "questionCount": count,
+            "followUpCount": self.FOLLOW_UP_COUNT,
+            "allocation": self.skill_service.build_allocation_description(allocation, skill.categories),
+            "references": self.skill_service.build_reference_section(skill, allocation),
+            "jdSection": (
+                wrap_prompt_data("jd", sanitize_prompt_data(skill.source_jd))
+                if skill.source_jd else "未提供 JD"
+            ),
+            "historicalQuestions": self._history_text(state.historical_questions),
+            "messages": state.messages,
+        })
+        return result if isinstance(result, InterviewQuestionLLMOutput) else InterviewQuestionLLMOutput.model_validate(result)
+
+    async def _invoke_resume_generation(
+        self, state: InterviewQuestionGraphState, count: int, config: RunnableConfig
+    ) -> InterviewQuestionLLMOutput:
+        prompt = await load_prompt("interview-question-resume", has_short_memory(config))
+        chain = prompt | self._model(state.llm_provider).with_structured_output(InterviewQuestionLLMOutput)
+        result = await chain.ainvoke({
+            "resumeText": wrap_prompt_data("resume", sanitize_prompt_data(state.resume_text)),
+            "difficulty": self._difficulty_description(state.difficulty),
+            "questionCount": count,
+            "followUpCount": self.FOLLOW_UP_COUNT,
+            "historicalQuestions": self._history_text(state.historical_questions),
+            "messages": state.messages,
+        })
+        return result if isinstance(result, InterviewQuestionLLMOutput) else InterviewQuestionLLMOutput.model_validate(result)
+
+    def _resolve_skill(self, state: InterviewQuestionGraphState) -> SkillDTO:
+        if state.skill_id == InterviewSkillService.CUSTOM_SKILL_ID:
+            if not state.custom_categories:
+                raise BusinessException(ErrorCode.BAD_REQUEST, "自定义面试必须提供 customCategories")
+            return self.skill_service.build_custom_skill(state.custom_categories, state.jd_text or "")
+        return self.skill_service.get_skill(state.skill_id)
+
+    def _normalize(
+        self, generated: list[InterviewQuestionLLMItem], question_count: int, skill: SkillDTO
+    ) -> list[InterviewQuestionDTO]:
+        usable = [item for item in generated if item.question.strip()][:question_count]
+        if len(usable) < question_count:
+            fallback = self._fallback_items(question_count - len(usable), skill, offset=len(usable))
+            usable.extend(fallback)
+        result: list[InterviewQuestionDTO] = []
+        for item in usable:
+            main_index = len(result)
+            question_type = (item.type or "GENERAL").strip().upper()
+            result.append(InterviewQuestionDTO(
+                question_index=main_index,
+                question=item.question.strip(),
+                type=question_type,
+                category=(item.category or question_type).strip(),
+                topic_summary=item.topic_summary,
+            ))
+            followups = [text.strip() for text in item.follow_ups if text and text.strip()]
+            for followup in followups[: self.FOLLOW_UP_COUNT]:
+                result.append(InterviewQuestionDTO(
+                    question_index=len(result),
+                    question=followup,
+                    type=question_type,
+                    category=(item.category or question_type).strip(),
+                    topic_summary=item.topic_summary,
+                    is_follow_up=True,
+                    parent_question_index=main_index,
+                ))
+        return result
+
+    def _build_fallback_questions(self, question_count: int, skill: SkillDTO | None = None) -> list[InterviewQuestionDTO]:
+        skill = skill or self.skill_service.get_skill("java-backend")
+        return self._normalize(self._fallback_items(question_count, skill), question_count, skill)
+
+    @staticmethod
+    def _fallback_items(count: int, skill: SkillDTO, offset: int = 0) -> list[InterviewQuestionLLMItem]:
+        categories = skill.categories or []
+        if not categories:
+            return [InterviewQuestionLLMItem(
+                question=f"请结合实际项目说明你对该技术方向核心能力的理解（{i + 1}）。",
+                type="GENERAL", category="综合能力", topic_summary="综合能力",
+                follow_ups=["你会如何验证该方案在生产环境中的可靠性？"],
+            ) for i in range(count)]
+        result = []
+        for index in range(count):
+            category = categories[(offset + index) % len(categories)]
+            result.append(InterviewQuestionLLMItem(
+                question=f"请说明你对{category.label}核心原理、适用场景和工程实践的理解。",
+                type=category.key,
+                category=category.label,
+                topic_summary=category.label,
+                follow_ups=[f"在{category.label}出现性能或稳定性问题时，你会如何排查？"],
+            ))
+        return result
+
+    async def _node_prepare_question_context(self, state: InterviewQuestionGraphState, config: RunnableConfig) -> Command:
+        _ = config
+        return Command(update={"error_message": None}, goto="generate_questions") if state.question_count > 0 else Command(update={"error_message": "invalid_input"}, goto="fallback_questions")
+
+    async def _node_generate_questions(self, state: InterviewQuestionGraphState, config: RunnableConfig) -> Command:
+        try:
+            output = await self._invoke_skill_generation(state, self._resolve_skill(state), state.question_count, config)
+            return Command(update={"generated": output.questions, "error_message": None}, goto="normalize_questions")
+        except Exception as error:
             return Command(update={"error_message": str(error)}, goto="fallback_questions")
 
     async def _node_normalize_questions(self, state: InterviewQuestionGraphState) -> Command:
-        """
-        把 LLM 输出标准化为系统题目 DTO，并展开追问形成线性题目序列。展开问题列表方便前端处理
-
-        Normalize LLM output into internal question DTOs and flatten follow-up
-        questions into a linear interview sequence.
-        """
-        question_list: list[InterviewQuestionDTO] = []
-        question_index: int = 0
-        # 本轮thread_id生成的问题都会遍历一遍
-        for item in state.generated:
-            if item.question.strip() == "":
-                continue
-            question_type: QuestionType = self._safe_question_type(item.type)
-            main_index: int = question_index
-            question_list.append(
-                InterviewQuestionDTO(
-                    question_index=question_index,
-                    question=item.question.strip(),
-                    type=question_type,
-                    category=item.category.strip() if item.category else question_type.value,
-                    user_answer=None,
-                    is_follow_up=False,
-                    parent_question_index=None,
-                )
-            )
-            question_index += 1
-            # 处理本问题的追问
-            followups: list[str] = [
-                text.strip()
-                for text in item.follow_ups
-                if text is not None and text.strip() != ""
-            ]
-            for follow_up in followups[:self._follow_up_count]:
-                question_list.append(
-                    InterviewQuestionDTO(
-                        question_index=question_index,
-                        question=follow_up,
-                        type=question_type,
-                        category=f"{item.category}追问",
-                        user_answer=None,
-                        is_follow_up=True,
-                        parent_question_index=main_index,
-                    )
-                )
-                question_index += 1
-        if len(question_list) == 0:
-            return Command(
-                update={"error_message": "empty_questions"},
-                goto="fallback_questions",
-            )
-        return Command(
-            update={
-                "questions": question_list,
-                "error_message": None,
-            },
-            goto=END,
-        )
+        questions = self._normalize(state.generated, state.question_count, self._resolve_skill(state))
+        return Command(update={"questions": questions, "error_message": None}, goto="__end__")
 
     async def _node_fallback_questions(self, state: InterviewQuestionGraphState) -> Command:
-        """
-        当 LLM 失败或输入无效时生成兜底题目，确保流程始终可继续。
+        questions = self._build_fallback_questions(max(1, state.question_count), self._resolve_skill(state))
+        return Command(update={"questions": questions, "generated": []}, goto="__end__")
 
-        Provide fallback questions when LLM fails or input is invalid,
-        ensuring interview flow remains available.
-        """
-        fallback_questions: list[InterviewQuestionDTO] = self._build_fallback_questions(state.question_count)
-        return Command(
-            update={
-                "questions": fallback_questions,
-                "generated": [],
-            },
-            goto=END,
-        )
+    def _model(self, provider: str | None) -> Any:
+        return self._chat_model or self.llm_provider_resolver.resolve(provider)
 
-    def _build_fallback_questions(self, question_count: int) -> list[InterviewQuestionDTO]:
-        fallback_questions: list[InterviewQuestionDTO] = []
-        defaults: list[tuple[str, QuestionType, str]] = [
-            ("请介绍你最核心的项目以及你的职责", QuestionType.PROJECT, "项目经历"),
-            ("请说明你如何设计 MySQL 索引并验证效果", QuestionType.MYSQL, "数据库"),
-            ("请介绍 Redis 常见数据结构和典型使用场景", QuestionType.REDIS, "缓存"),
-            ("请说明你处理并发安全问题的实践", QuestionType.JAVA_CONCURRENT, "并发"),
-            ("请介绍 Spring Boot 自动配置的核心机制", QuestionType.SPRING_BOOT, "框架"),
-        ]
-        question_index: int = 0
-        for text, question_type, category in defaults[: max(1, question_count)]:
-            fallback_questions.append(
-                InterviewQuestionDTO(
-                    question_index=question_index,
-                    question=text,
-                    type=question_type,
-                    category=category,
-                    user_answer=None,
-                    is_follow_up=False,
-                    parent_question_index=None,
-                )
-            )
-            question_index += 1
-        return fallback_questions
+    @staticmethod
+    def _difficulty_description(difficulty: Difficulty) -> str:
+        return {
+            Difficulty.JUNIOR: "初级：关注基础概念、常用实践与清晰表达",
+            Difficulty.MID: "中级：关注原理、边界条件、故障处理与工程权衡",
+            Difficulty.SENIOR: "高级：关注架构决策、复杂场景、性能与系统性权衡",
+        }[difficulty]
 
-    def _safe_question_type(self, raw_type: str) -> QuestionType:
-        try:
-            return QuestionType(raw_type.upper())
-        except Exception:
-            return QuestionType.JAVA_BASIC
-
-    def _calculate_distribution(self, total: int) -> QuestionDistribution:
-        """
-        计算各题型数量。
-
-        Calculate per-type question counts
-        """
-        project: int = max(1, round(total * PROJECT_RATIO))
-        mysql: int = max(1, round(total * MYSQL_RATIO))
-        redis: int = max(1, round(total * REDIS_RATIO))
-        java_basic: int = max(1, round(total * JAVA_BASIC_RATIO))
-        java_collection: int = round(total * JAVA_COLLECTION_RATIO)
-        java_concurrent: int = round(total * JAVA_CONCURRENT_RATIO)
-        spring: int = total - project - mysql - redis - java_basic - java_collection - java_concurrent
-        spring = max(0, spring)
-        return QuestionDistribution(
-            project=project,
-            mysql=mysql,
-            redis=redis,
-            java_basic=java_basic,
-            java_collection=java_collection,
-            java_concurrent=java_concurrent,
-            spring=spring,
+    @staticmethod
+    def _history_text(history: list[HistoricalQuestion]) -> str:
+        if not history:
+            return "暂无历史提问"
+        return "\n".join(
+            f"- [{sanitize_prompt_data(item.type)}] {sanitize_prompt_data(item.question)}"
+            for item in history
         )

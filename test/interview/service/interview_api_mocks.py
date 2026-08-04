@@ -41,6 +41,7 @@ class MockInterviewAgentService:
         )
 
         self.create_session = AsyncMock(return_value=session)
+        self.list_sessions = AsyncMock(return_value=[])
         self.get_session = AsyncMock(return_value=session)
         self.get_current_question = AsyncMock(
             return_value=CurrentQuestionResponse(completed=False, message=None, question=question)
