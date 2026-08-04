@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -14,6 +15,13 @@ from common.dependencies import (
     interview_agent_service,
     evaluate_message_consumer,
     llm_provider_service,
+    analyze_message_producer,
+    vectorize_message_producer,
+    evaluate_message_producer,
+    voice_evaluate_message_producer,
+    voice_evaluate_message_consumer,
+    voice_evaluation_recovery_service,
+    voice_runtime_manager,
 )
 from common.exceptions import BusinessException
 from modules.interview.router import interview_router
@@ -21,6 +29,8 @@ from modules.interview.router import interview_skill_router
 from modules.knowledgebase.router import knowledgebase_router, rag_chat_router
 from modules.resume.router import resume_router
 from modules.llmprovider.router import llm_provider_router
+from modules.voiceinterview.router import rest_router as voice_interview_router
+from modules.voiceinterview.router import websocket_router as voice_interview_websocket_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -32,16 +42,35 @@ async def lifespan(app: FastAPI):
         await checkpointer.setup()
         await knowledgebase_query_service.build_graph(checkpointer)
         await interview_agent_service.build_graph(checkpointer)
-        await analyze_message_consumer.start()
-        await vectorize_message_consumer.start()
-        await evaluate_message_consumer.start()
-        logging.info("LangGraph Checkpointer 已就绪")
-        yield
-
-    await evaluate_message_consumer.shutdown()
-    await vectorize_message_consumer.shutdown()
-    await analyze_message_consumer.shutdown()
-    logging.info("LangGraph Checkpointer 连接池已关闭")
+        producers = [
+            analyze_message_producer,
+            vectorize_message_producer,
+            evaluate_message_producer,
+            voice_evaluate_message_producer,
+        ]
+        consumers = [
+            analyze_message_consumer,
+            vectorize_message_consumer,
+            evaluate_message_consumer,
+            voice_evaluate_message_consumer,
+        ]
+        try:
+            await asyncio.gather(*(asyncio.to_thread(item.start) for item in producers))
+            for consumer in consumers:
+                await consumer.start()
+            await voice_evaluation_recovery_service.start()
+            logging.info("LangGraph Checkpointer 与语音面试任务已就绪")
+            yield
+        finally:
+            await voice_runtime_manager.close_all()
+            await voice_evaluation_recovery_service.shutdown()
+            for consumer in reversed(consumers):
+                await consumer.shutdown()
+            await asyncio.gather(
+                *(asyncio.to_thread(item.shutdown) for item in reversed(producers)),
+                return_exceptions=True,
+            )
+            logging.info("后台任务与 LangGraph Checkpointer 连接已关闭")
 
 app = FastAPI(title="Resume Analysis Service Migration", version="1.0", lifespan=lifespan)
 
@@ -51,6 +80,8 @@ app.include_router(rag_chat_router.router)
 app.include_router(interview_router.router)
 app.include_router(interview_skill_router.router)
 app.include_router(llm_provider_router.router)
+app.include_router(voice_interview_router.router)
+app.include_router(voice_interview_websocket_router.router)
 
 @app.exception_handler(BusinessException)
 async def business_exception_handler(request: Request, exc: BusinessException):

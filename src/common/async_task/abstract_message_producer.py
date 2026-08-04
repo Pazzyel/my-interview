@@ -6,8 +6,6 @@ from typing import TypeVar, Generic, Dict, Any, Optional, ClassVar, Coroutine
 
 import asyncio
 
-from rocketmq import ClientConfiguration, Credentials, Message, Producer
-
 from common.config import app_config
 
 logger = logging.getLogger(__name__)
@@ -21,29 +19,40 @@ class AbstractMessageProducer(ABC, Generic[T]):
     统一消息发送骨架与失败处理逻辑。
     """
 
-    _producers: ClassVar[Dict[str, Producer]] = {}
-    _producer_ref_counts: ClassVar[Dict[str, int]] = {}
+    _producers: ClassVar[Dict[tuple[str, str], Any]] = {}
+    _producer_ref_counts: ClassVar[Dict[tuple[str, str], int]] = {}
     _producer_lock: ClassVar[threading.Lock] = threading.Lock()
 
     def __init__(self) -> None:
         self._producer_group = self.producer_group()
+        self._producer_key = (self._producer_group, self.topic())
+        self._producer: Optional[Any] = None
+        self._acquired = False
+
+    def start(self) -> None:
+        """Lazily start the shared producer; safe to call more than once."""
+        if self._acquired:
+            return
 
         with self._producer_lock:
-            producer = self._producers.get(self._producer_group)
+            from rocketmq import ClientConfiguration, Credentials, Producer
+
+            producer = self._producers.get(self._producer_key)
             if producer is None:
                 config = ClientConfiguration(app_config.rocketmq_endpoints, Credentials())
                 producer = Producer(config, (self.topic(),))
                 producer.startup()
-                self._producers[self._producer_group] = producer
-                self._producer_ref_counts[self._producer_group] = 0
+                self._producers[self._producer_key] = producer
+                self._producer_ref_counts[self._producer_key] = 0
                 logger.info(
                     "RocketMQ Producer started: endpoints=%s, group=%s",
                     app_config.rocketmq_endpoints,
                     self._producer_group,
                 )
 
-            self._producer_ref_counts[self._producer_group] += 1
+            self._producer_ref_counts[self._producer_key] += 1
             self._producer = producer
+            self._acquired = True
 
     # ────────── 模板方法：发送任务 ──────────
 
@@ -53,6 +62,9 @@ class AbstractMessageProducer(ABC, Generic[T]):
         子类调用本方法，由基类完成序列化 → 发送 → 异常处理。
         """
         try:
+            self.start()
+            from rocketmq import Message
+
             body = json.dumps(self.build_message(payload), ensure_ascii=False).encode("utf-8")
 
             msg = Message()
@@ -61,6 +73,8 @@ class AbstractMessageProducer(ABC, Generic[T]):
             msg.tag = self.tag()
             msg.body = body
 
+            if self._producer is None:
+                raise RuntimeError("RocketMQ Producer is not started")
             send_result = self._producer.send(msg)
 
             logger.info(
@@ -116,19 +130,23 @@ class AbstractMessageProducer(ABC, Generic[T]):
     def shutdown(self) -> None:
         """关闭生产者，释放资源。"""
         with self._producer_lock:
-            ref_count = self._producer_ref_counts.get(self._producer_group, 0)
+            if not self._acquired:
+                return
+            ref_count = self._producer_ref_counts.get(self._producer_key, 0)
             if ref_count <= 0:
                 return
 
             ref_count -= 1
-            self._producer_ref_counts[self._producer_group] = ref_count
+            self._producer_ref_counts[self._producer_key] = ref_count
 
             if ref_count == 0:
-                producer = self._producers.pop(self._producer_group, None)
-                self._producer_ref_counts.pop(self._producer_group, None)
+                producer = self._producers.pop(self._producer_key, None)
+                self._producer_ref_counts.pop(self._producer_key, None)
                 if producer is not None:
                     producer.shutdown()
                     logger.info("RocketMQ Producer closed: group=%s", self._producer_group)
+            self._producer = None
+            self._acquired = False
 
     def producer_group(self) -> str:
         """RocketMQ Producer Group，子类可按需覆盖。"""

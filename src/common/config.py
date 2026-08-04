@@ -29,6 +29,9 @@ class AppConfigProperties(BaseSettings):
     interview_evaluate_topic: str = "interview-evaluate-topic"
     interview_evaluate_tag: str = "evaluate"
     interview_evaluate_consumer_group: str = "interview-evaluate-consumer-group"
+    voice_interview_evaluate_topic: str = "voice-interview-evaluate-topic"
+    voice_interview_evaluate_tag: str = "evaluate"
+    voice_interview_evaluate_consumer_group: str = "voice-interview-evaluate-consumer-group"
     database_url: str = "mysql+aiomysql://root:123@localhost:3308/interview"
     DB_URI: str = "mysql+aiomysql://root:123@localhost:3308/checkpointer" # 这是LangGraph checkpointer的保存点
 
@@ -58,6 +61,34 @@ class AppConfigProperties(BaseSettings):
 
     # Tokenizer
     tokenizer_name: str = "cl100k_base"
+
+    # Voice interview. Missing credentials do not prevent application startup;
+    # the WebSocket returns a configuration error when speech is requested.
+    voice_dashscope_api_key: str | None = None
+    voice_dashscope_realtime_url: str = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
+    voice_asr_model: str = "qwen3-asr-flash-realtime"
+    voice_tts_model: str = "qwen3-tts-flash-realtime"
+    voice_tts_voice: str = "Cherry"
+    voice_asr_sample_rate: int = 16000
+    voice_tts_sample_rate: int = 24000
+    voice_external_connect_timeout_seconds: float = 5.0
+    voice_asr_ready_timeout_seconds: float = 10.0
+    voice_tts_timeout_seconds: float = 8.0
+    voice_llm_timeout_seconds: float = 30.0
+    voice_asr_max_reconnects: int = 2
+    voice_echo_cooldown_ms: int = 800
+    voice_max_concurrent_tts: int = 3
+    voice_ai_question_max_chars: int = 120
+    voice_trust_forwarded_headers: bool = False
+    voice_public_ws_base_url: str | None = None
+    voice_allowed_hosts: list[str] = ["localhost", "127.0.0.1", "testserver"]
+    voice_context_mode: str = "SUMMARY"
+    voice_context_window_size: int = 20
+    voice_context_summary_batch_size: int = 10
+    voice_context_summary_timeout_seconds: float = 20.0
+    voice_evaluation_recovery_interval_seconds: int = 60
+    voice_evaluation_pending_stale_seconds: int = 120
+    voice_evaluation_processing_stale_seconds: int = 600
 
     # ElasticSearch
     elasticsearch_url: str = "http://localhost:9200"

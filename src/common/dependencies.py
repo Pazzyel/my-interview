@@ -1,4 +1,5 @@
 from infrastructure.file.document_parse_service import DocumentParseService
+from common.config import app_config
 from infrastructure.file.file_hash_service import FileHashService
 from infrastructure.file.file_storage_service import FileStorageService
 from infrastructure.file.file_validation_service import FileValidationService
@@ -42,6 +43,27 @@ from modules.resume.service.resume_grading_service import ResumeGradingService
 from modules.resume.service.resume_history_service import ResumeHistoryService
 from modules.resume.service.resume_parse_service import ResumeParseService
 from modules.resume.service.resume_upload_service import ResumeUploadService
+from infrastructure.database.connection import async_session_factory
+from modules.voiceinterview.listener.evaluate_message_consumer import VoiceEvaluateMessageConsumer
+from modules.voiceinterview.listener.evaluate_message_producer import VoiceEvaluateMessageProducer
+from modules.voiceinterview.repository.evaluation_repository import VoiceInterviewEvaluationRepository
+from modules.voiceinterview.repository.message_repository import VoiceInterviewMessageRepository
+from modules.voiceinterview.repository.session_repository import VoiceInterviewSessionRepository
+from modules.voiceinterview.realtime.manager import VoiceInterviewRuntimeManager
+from modules.voiceinterview.router import rest_router as voice_rest_router_module
+from modules.voiceinterview.router.websocket_router import configure_runtime_manager
+from modules.voiceinterview.service.context_service import ContextMode, VoiceInterviewContextService
+from modules.voiceinterview.service.conversation_service import VoiceInterviewConversationService
+from modules.voiceinterview.service.evaluation_recovery_service import VoiceEvaluationRecoveryService
+from modules.voiceinterview.service.evaluation_service import VoiceInterviewEvaluationService
+from modules.voiceinterview.service.prompt_builder import VoiceInterviewPromptBuilder
+from modules.voiceinterview.service.session_service import VoiceInterviewSessionService
+from modules.voiceinterview.speech.dashscope import (
+    DashScopeAsrConfig,
+    DashScopeAsrProvider,
+    DashScopeTtsConfig,
+    DashScopeTtsProvider,
+)
 
 # ==================== Shared Infrastructure ====================
 
@@ -149,3 +171,87 @@ knowledgebase_query_service = KnowledgeBaseQueryService(
     llm_provider_registry,
 )
 rag_chat_session_service = RagChatSessionService(rag_chat_session_repository, knowledgebase_query_service)
+
+# ==================== Voice Interview Module ====================
+
+voice_session_repository = VoiceInterviewSessionRepository()
+voice_message_repository = VoiceInterviewMessageRepository()
+voice_evaluation_repository = VoiceInterviewEvaluationRepository()
+voice_evaluate_message_producer = VoiceEvaluateMessageProducer()
+
+voice_interview_session_service = VoiceInterviewSessionService(
+    voice_session_repository,
+    voice_message_repository,
+    voice_evaluation_repository,
+    voice_evaluate_message_producer.send_evaluate_task_async,
+    resume_repository,
+    interview_skill_service,
+    app_config.voice_evaluation_processing_stale_seconds,
+)
+voice_context_service = VoiceInterviewContextService(
+    voice_message_repository,
+    llm_provider_registry,
+    ContextMode(app_config.voice_context_mode.upper()),
+    app_config.voice_context_window_size,
+    app_config.voice_context_summary_batch_size,
+    app_config.voice_context_summary_timeout_seconds,
+)
+voice_prompt_builder = VoiceInterviewPromptBuilder(interview_skill_service)
+voice_conversation_service = VoiceInterviewConversationService(
+    voice_prompt_builder,
+    voice_context_service,
+    llm_provider_registry,
+    resume_repository,
+    voice_message_repository,
+    app_config.voice_llm_timeout_seconds,
+    app_config.voice_ai_question_max_chars,
+)
+voice_asr_provider = DashScopeAsrProvider(DashScopeAsrConfig(
+    api_key=app_config.voice_dashscope_api_key,
+    url=app_config.voice_dashscope_realtime_url,
+    model=app_config.voice_asr_model,
+    sample_rate=app_config.voice_asr_sample_rate,
+    connect_timeout_seconds=app_config.voice_external_connect_timeout_seconds,
+))
+voice_tts_provider = DashScopeTtsProvider(DashScopeTtsConfig(
+    api_key=app_config.voice_dashscope_api_key,
+    url=app_config.voice_dashscope_realtime_url,
+    model=app_config.voice_tts_model,
+    voice=app_config.voice_tts_voice,
+    sample_rate=app_config.voice_tts_sample_rate,
+    connect_timeout_seconds=app_config.voice_external_connect_timeout_seconds,
+    response_timeout_seconds=app_config.voice_tts_timeout_seconds,
+))
+voice_runtime_manager = VoiceInterviewRuntimeManager(
+    session_service=voice_interview_session_service,
+    conversation_service=voice_conversation_service,
+    asr_provider=voice_asr_provider,
+    tts_provider=voice_tts_provider,
+    cooldown_ms=app_config.voice_echo_cooldown_ms,
+    tts_concurrency=app_config.voice_max_concurrent_tts,
+    max_asr_reconnects=app_config.voice_asr_max_reconnects,
+)
+configure_runtime_manager(voice_runtime_manager)
+voice_rest_router_module.voice_interview_session_service = voice_interview_session_service
+voice_rest_router_module.configure_runtime_manager(voice_runtime_manager)
+
+voice_evaluation_service = VoiceInterviewEvaluationService(
+    async_session_factory,
+    voice_session_repository,
+    voice_message_repository,
+    voice_evaluation_repository,
+    resume_repository,
+    interview_agent_service.evaluation_agent_service,
+    interview_skill_service,
+)
+voice_evaluate_message_consumer = VoiceEvaluateMessageConsumer(
+    voice_evaluation_service, voice_evaluate_message_producer
+)
+voice_evaluation_recovery_service = VoiceEvaluationRecoveryService(
+    async_session_factory,
+    voice_session_repository,
+    voice_evaluate_message_producer,
+    app_config.voice_evaluation_recovery_interval_seconds,
+    app_config.voice_evaluation_pending_stale_seconds,
+    app_config.voice_evaluation_processing_stale_seconds,
+)

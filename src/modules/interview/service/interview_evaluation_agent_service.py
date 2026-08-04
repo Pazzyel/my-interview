@@ -10,6 +10,7 @@ from langgraph.types import Checkpointer, Command
 from pydantic import BaseModel, Field
 
 from common.llm_provider import LlmProviderRegistry, LlmProviderResolver
+from common.prompt_security import sanitize_prompt_data, wrap_prompt_data
 from infrastructure.prompt.prompt_service import has_short_memory, load_prompt
 from modules.interview.model.interview_agent_dto import (
     CategoryScoreDTO,
@@ -66,6 +67,9 @@ class InterviewEvaluationAgentService:
             self._evaluate_batch(batch, resume_text, llm_provider, reference_context)
             for batch in batches
         ], return_exceptions=True)
+        failures = [item for item in results if isinstance(item, BaseException)]
+        if failures:
+            raise RuntimeError(f"面试评估批次失败: {failures[0]}") from failures[0]
         outputs = [item for item in results if isinstance(item, InterviewEvaluationLLMOutput)]
         details, refs = self._merge_evaluations(outputs, questions)
         overall_score = round(sum(item.score for item in details) / len(details)) if details else 0
@@ -93,14 +97,19 @@ class InterviewEvaluationAgentService:
             "questionIndex": item.question_index,
             "question": item.question,
             "category": item.category,
-            "userAnswer": item.user_answer,
+            "userAnswer": sanitize_prompt_data(item.user_answer or ""),
             "questionReferenceAnswer": item.reference_answer,
             "questionKeyPoints": item.key_points,
             "scoringRubric": item.scoring_rubric,
         } for item in questions]
         result = await chain.ainvoke({
-            "resumeText": resume_text or "未提供简历",
-            "qaRecords": json.dumps(payload, ensure_ascii=False),
+            "resumeText": (
+                wrap_prompt_data("resume", sanitize_prompt_data(resume_text))
+                if resume_text else "未提供简历"
+            ),
+            "qaRecords": wrap_prompt_data(
+                "qa-records", json.dumps(payload, ensure_ascii=False)
+            ),
             "referenceContext": reference_context or "未配置 Skill references",
         })
         return result if isinstance(result, InterviewEvaluationLLMOutput) else InterviewEvaluationLLMOutput.model_validate(result)

@@ -4,15 +4,6 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, Coroutine, Generic, Optional, TypeVar
 
-from rocketmq import (
-    ClientConfiguration,
-    ConsumeResult,
-    Credentials,
-    FilterExpression,
-    MessageListener,
-    PushConsumer,
-)
-
 from common.config import app_config
 
 logger = logging.getLogger(__name__)
@@ -20,11 +11,11 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-class _CallbackMessageListener(MessageListener):
+class _CallbackMessageListener:
     def __init__(self, callback: Any):
         self._callback = callback
 
-    def consume(self, message: Any) -> ConsumeResult:
+    def consume(self, message: Any) -> Any:
         return self._callback(message)
 
 
@@ -39,7 +30,7 @@ class AbstractStreamConsumer(ABC, Generic[T]):
     """
 
     def __init__(self) -> None:
-        self._consumer: Optional[PushConsumer] = None
+        self._consumer: Optional[Any] = None
         self._main_loop: Optional[asyncio.AbstractEventLoop] = None
         self._started: bool = False
 
@@ -53,16 +44,18 @@ class AbstractStreamConsumer(ABC, Generic[T]):
             return
 
         self._main_loop = asyncio.get_running_loop()
+        from rocketmq import ClientConfiguration, Credentials, FilterExpression, PushConsumer
+
         config = ClientConfiguration(app_config.rocketmq_endpoints, Credentials())
         listener = _CallbackMessageListener(self._on_message)
         subscription = {self.topic(): FilterExpression(self.tag() or "*")}
-        consumer: PushConsumer = PushConsumer(
+        consumer = PushConsumer(
             client_configuration=config,
             consumer_group=self.consumer_group(),
             message_listener=listener,
             subscription=subscription,
         )
-        consumer.startup()
+        await asyncio.to_thread(consumer.startup)
 
         self._consumer = consumer
         self._started = True
@@ -80,13 +73,13 @@ class AbstractStreamConsumer(ABC, Generic[T]):
             return
 
         if self._consumer is not None:
-            self._consumer.shutdown()
+            await asyncio.to_thread(self._consumer.shutdown)
 
         self._consumer = None
         self._started = False
         logger.info("%s consumer stopped", self.consumer_display_name())
 
-    def _on_message(self, message: Any) -> ConsumeResult:
+    def _on_message(self, message: Any) -> Any:
         """
         RocketMQ 回调模板方法。
 
@@ -98,6 +91,8 @@ class AbstractStreamConsumer(ABC, Generic[T]):
         3) 失败时按统一重试策略重新入队。
         4) 达到最大重试后执行失败落库。
         """
+        from rocketmq import ConsumeResult
+
         try:
             raw_body: bytes = message.body
             payload_dict: Any = json.loads(raw_body.decode("utf-8"))
