@@ -1,7 +1,6 @@
-import json
 import logging
 import re
-from typing import Optional, List, AsyncGenerator, Annotated
+from typing import Any, Optional, List, AsyncGenerator, Annotated
 
 import regex
 from langchain_core.documents import Document
@@ -33,27 +32,20 @@ NO_RESULT_RESPONSE = "抱歉，在选定的知识库中未检索到相关信息�
 SERVER_ERROR_RESPONSE = "抱歉，AI知识库问答服务暂时不可用。请您稍后再试。"
 
 
-def to_json_serializable(data):
-    if isinstance(data, Document):
-        return {
-            "page_content": data.page_content,
-            "metadata": data.metadata,
-        }
-    if isinstance(data, dict):
-        return {key: to_json_serializable(value) for key, value in data.items()}
-    if isinstance(data, list):
-        return [to_json_serializable(item) for item in data]
-    if isinstance(data, tuple):
-        return [to_json_serializable(item) for item in data]
-    if isinstance(data, (str, int, float, bool)) or data is None:
-        return data
-    if hasattr(data, "model_dump") and callable(data.model_dump):
-        return to_json_serializable(data.model_dump())
-    if hasattr(data, "dict") and callable(data.dict):
-        return to_json_serializable(data.dict())
-    if hasattr(data, "__dict__"):
-        return to_json_serializable(vars(data))
-    return str(data)
+def collect_response_text(value: Any) -> List[str]:
+    """Collect response fields from a LangGraph update event."""
+    response_texts: List[str] = []
+    if isinstance(value, dict):
+        for key, nested_value in value.items():
+            if key == "response" and isinstance(nested_value, str):
+                response_texts.append(nested_value)
+            else:
+                response_texts.extend(collect_response_text(nested_value))
+    elif isinstance(value, (list, tuple)):
+        for nested_value in value:
+            response_texts.extend(collect_response_text(nested_value))
+    return response_texts
+
 
 class KnowledgeQueryState(BaseModel):
     origin_query: str
@@ -138,15 +130,16 @@ class KnowledgeBaseQueryService:
                 config=config,
                 stream_mode="updates"
         ):
-            # 3. 格式化为 SSE 协议格式
-            # event 结构通常为: {"node_name": {"field": "value"}}
-            safe_event = to_json_serializable(event)
-            yield f"data: {json.dumps(safe_event, ensure_ascii=False)}\n\n"
+            # LangGraph 事件结构通常为: {"node_name": {"field": "value"}}。
+            # 前端只接受答案文本，因此过滤掉中间状态并输出纯文本 data 帧。
+            response_texts = collect_response_text(event)
+            if len(response_texts) == 0:
+                continue
 
-            # 4. 发送结束信号
-        yield "data: [DONE]\n\n"
-
-
+            # 当前图节点返回完整答案；拆成字符片段以保持前端的渐进渲染。
+            response_text = max(response_texts, key=len)
+            for character in response_text:
+                yield f"data:{character}\n\n"
     async def query_knowledge_base(self, db: AsyncSession, request: QueryRequest) -> QueryResponse:
         """根据知识库查询请求执行查询并构建响应"""
         answer: str = await self.answer_question(request.question, request.knowledge_base_ids)
