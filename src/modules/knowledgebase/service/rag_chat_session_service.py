@@ -1,6 +1,5 @@
-import json
 import logging
-from typing import Any, AsyncGenerator, List, Optional
+from typing import AsyncGenerator, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -204,40 +203,11 @@ class RagChatSessionService:
             raise
 
     def _extract_response_content(self, stream_item: str) -> str:
-        """从 SSE data 行中提取 response 字段文本。"""
-        if not stream_item.startswith("data: "):
+        """从 SSE data 帧中提取纯文本片段，不丢失空白字符。"""
+        if not stream_item.startswith("data:") or not stream_item.endswith("\n\n"):
             return ""
 
-        payload: str = stream_item[6:].strip()
-        if payload == "[DONE]" or payload == "":
-            return ""
-
-        try:
-            payload_object: Any = json.loads(payload)
-        except json.JSONDecodeError:
-            return ""
-
-        collected_text_list: List[str] = []
-        self._collect_response_text(payload_object, collected_text_list)
-        if len(collected_text_list) == 0:
-            return ""
-
-        longest_text: str = max(collected_text_list, key=len)
-        return longest_text
-
-    def _collect_response_text(self, current_value: Any, output_list: List[str]) -> None:
-        """递归提取事件中 key=response 的字符串字段。"""
-        if isinstance(current_value, dict):
-            for key, value in current_value.items():
-                if key == "response" and isinstance(value, str):
-                    output_list.append(value)
-                else:
-                    self._collect_response_text(value, output_list)
-            return
-
-        if isinstance(current_value, list):
-            for item in current_value:
-                self._collect_response_text(item, output_list)
+        return stream_item[5:-2]
 
     def _merge_stream_content(self, current_content: str, incoming_content: str) -> str:
         """兼容“增量片段”和“全量覆盖”两类流式内容格式。"""

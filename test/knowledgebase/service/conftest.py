@@ -55,6 +55,10 @@ def _install_knowledgebase_service_stubs() -> None:
         prompt_stub = types.ModuleType("infrastructure.prompt.prompt_service")
         prompt_stub.load_prompt = AsyncMock()
         prompt_stub.has_short_memory = MagicMock(return_value=False)
+        prompt_stub.Role = types.SimpleNamespace(
+            USER=types.SimpleNamespace(value="user"),
+            ASSISTANT=types.SimpleNamespace(value="assistant"),
+        )
         sys.modules["infrastructure.prompt.prompt_service"] = prompt_stub
 
     # document_parse_service
