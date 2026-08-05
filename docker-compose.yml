@@ -1,0 +1,177 @@
+name: interview-platform
+
+services:
+  mysql:
+    image: mysql:8.4.10
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-interview_dev_password}
+    ports:
+      - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${MYSQL_PORT:-3308}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./resources/sql/init_schema.sql:/docker-entrypoint-initdb.d/001-init-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping --host=127.0.0.1 --user=root --password=$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.17
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      xpack.security.autoconfiguration.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    ports:
+      - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${ELASTICSEARCH_PORT:-9200}:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent 'http://127.0.0.1:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null"]
+      interval: 10s
+      timeout: 6s
+      retries: 18
+      start_period: 45s
+
+  rocketmq-nameserver:
+    image: apache/rocketmq:5.3.4
+    restart: unless-stopped
+    command: sh mqnamesrv
+    environment:
+      JAVA_OPT_EXT: -server -Xms256m -Xmx256m -Xmn128m
+    depends_on:
+      rocketmq-permissions:
+        condition: service_completed_successfully
+    ports:
+      - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${ROCKETMQ_NAMESERVER_PORT:-9876}:9876"
+    volumes:
+      - rocketmq-nameserver-logs:/home/rocketmq/logs
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9876'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  rocketmq-broker:
+    image: apache/rocketmq:5.3.4
+    restart: unless-stopped
+    command: >-
+      sh mqbroker --enable-proxy
+      -c /home/rocketmq/rocketmq-5.3.4/conf/broker.conf
+    environment:
+      NAMESRV_ADDR: rocketmq-nameserver:9876
+      JAVA_OPT_EXT: -server -Xms512m -Xmx512m -Xmn256m
+    depends_on:
+      rocketmq-permissions:
+        condition: service_completed_successfully
+      rocketmq-nameserver:
+        condition: service_healthy
+    ports:
+      - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${ROCKETMQ_BROKER_PORT:-10911}:10911"
+      - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${ROCKETMQ_PROXY_HTTP_PORT:-8080}:8080"
+      - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${ROCKETMQ_PROXY_GRPC_PORT:-8081}:8081"
+    volumes:
+      - ./deploy/rocketmq/broker.conf:/home/rocketmq/rocketmq-5.3.4/conf/broker.conf:ro
+      - rocketmq-broker-logs:/home/rocketmq/logs
+      - rocketmq-broker-store:/home/rocketmq/store
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8081'"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 45s
+
+  rocketmq-permissions:
+    image: alpine:3.22
+    user: root
+    restart: "no"
+    command:
+      - sh
+      - -c
+      - >-
+        mkdir -p /nameserver-logs/rocketmqlogs /broker-logs/rocketmqlogs /broker-store
+        && chown -R 3000:3000 /nameserver-logs /broker-logs /broker-store
+    volumes:
+      - rocketmq-nameserver-logs:/nameserver-logs
+      - rocketmq-broker-logs:/broker-logs
+      - rocketmq-broker-store:/broker-store
+
+  rustfs-permissions:
+    image: alpine:3.22
+    user: root
+    restart: "no"
+    command: chown -R 10001:10001 /data
+    volumes:
+      - rustfs-data:/data
+
+  rustfs:
+    image: rustfs/rustfs:1.0.0-beta.11
+    restart: unless-stopped
+    command: /data
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin_dev_secret}
+      RUSTFS_CONSOLE_ENABLE: "true"
+    depends_on:
+      rustfs-permissions:
+        condition: service_completed_successfully
+    ports:
+      - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${RUSTFS_API_PORT:-9000}:9000"
+      - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${RUSTFS_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - rustfs-data:/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: mysql+aiomysql://root:${MYSQL_ROOT_PASSWORD:-interview_dev_password}@mysql:3306/interview
+      DB_URI: mysql+aiomysql://root:${MYSQL_ROOT_PASSWORD:-interview_dev_password}@mysql:3306/checkpointer
+      ROCKETMQ_ENDPOINTS: rocketmq-broker:8081
+      RUSTFS_ENDPOINT_URL: http://rustfs:9000
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin_dev_secret}
+      RUSTFS_REGION_NAME: ${RUSTFS_REGION_NAME:-us-east-1}
+      RUSTFS_BUCKET_NAME: ${RUSTFS_BUCKET_NAME:-resources}
+      RUSTFS_KB_BUCKET_NAME: ${RUSTFS_KB_BUCKET_NAME:-knowledgebases}
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      ELASTICSEARCH_INDEX_NAME: ${ELASTICSEARCH_INDEX_NAME:-smart_service}
+      LLM_PROVIDER_ENCRYPTION_KEY: ${LLM_PROVIDER_ENCRYPTION_KEY:-local-compose-encryption-key-change-me}
+      LLM_PROVIDER_BOOTSTRAP_JSON: >-
+        {"default":{"baseUrl":"${LLM_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}","apiKey":"${LLM_API_KEY:-replace-me}","model":"${LLM_CHAT_MODEL:-qwen-plus}","embeddingModel":"${LLM_EMBEDDING_MODEL:-text-embedding-v4}","embeddingDimensions":${LLM_EMBEDDING_DIMENSIONS:-1024},"supportsEmbedding":true,"temperature":0,"enabled":true}}
+      LLM_DEFAULT_CHAT_PROVIDER: default
+      LLM_DEFAULT_EMBEDDING_PROVIDER: default
+      VOICE_DASHSCOPE_API_KEY: ${VOICE_DASHSCOPE_API_KEY:-}
+      VOICE_DASHSCOPE_REALTIME_URL: ${VOICE_DASHSCOPE_REALTIME_URL:-wss://dashscope.aliyuncs.com/api-ws/v1/realtime}
+      VOICE_PUBLIC_WS_BASE_URL: ${VOICE_PUBLIC_WS_BASE_URL:-}
+      CORS_ORIGINS: '${CORS_ORIGINS:-["http://localhost:5173","http://127.0.0.1:5173"]}'
+    depends_on:
+      mysql:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      rocketmq-broker:
+        condition: service_healthy
+      rustfs:
+        condition: service_started
+    ports:
+      - "${BACKEND_BIND_ADDRESS:-0.0.0.0}:${BACKEND_PORT:-8072}:8072"
+    stop_grace_period: 30s
+
+volumes:
+  mysql-data:
+  elasticsearch-data:
+  rocketmq-nameserver-logs:
+  rocketmq-broker-logs:
+  rocketmq-broker-store:
+  rustfs-data:

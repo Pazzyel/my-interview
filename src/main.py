@@ -52,7 +52,7 @@ logging.basicConfig(level=logging.INFO)
 async def lifespan(app: FastAPI):
     await llm_provider_service.initialize()
     await voice_provider_config_service.initialize()
-    async with AIOMySQLSaver.from_conn_string(app_config.DB_URI) as checkpointer:
+    async with AIOMySQLSaver.from_conn_string(app_config.db_uri) as checkpointer:
         await checkpointer.setup()
         await knowledgebase_query_service.build_graph(checkpointer)
         await interview_agent_service.build_graph(checkpointer)
@@ -94,6 +94,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Resume Analysis Service Migration", version="1.0", lifespan=lifespan)
 
+
+@app.get("/health", tags=["System"])
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
+
 app.include_router(resume_router.router)
 app.include_router(knowledgebase_router.router)
 app.include_router(rag_chat_router.router)
@@ -110,16 +115,9 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 app.add_exception_handler(Exception, global_exception_handler)
 
-origins = [
-    # 如果你还有其他前端地址，可以继续往这里加
-    "http://localhost:5173",
-]
-
-
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=app_config.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -11,6 +11,7 @@ class AppConfigProperties(BaseSettings):
     llm_provider_bootstrap_json: str | None = None
     llm_default_chat_provider: str | None = None
     llm_default_embedding_provider: str | None = None
+    cors_origins: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     allowed_types: List[str] = [
         "application/pdf",
         "application/msword",
@@ -33,7 +34,7 @@ class AppConfigProperties(BaseSettings):
     voice_interview_evaluate_tag: str = "evaluate"
     voice_interview_evaluate_consumer_group: str = "voice-interview-evaluate-consumer-group"
     database_url: str = "mysql+aiomysql://root:123@localhost:3308/interview"
-    DB_URI: str = "mysql+aiomysql://root:123@localhost:3308/checkpointer" # 这是LangGraph checkpointer的保存点
+    db_uri: str = "mysql+aiomysql://root:123@localhost:3308/checkpointer"
 
     # RustFS (S3 compatible) config
     rustfs_endpoint_url: str = "http://localhost:9000"

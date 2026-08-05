@@ -1,3 +1,10 @@
+CREATE DATABASE IF NOT EXISTS `interview`
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS `checkpointer`
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+USE `interview`;
+
 CREATE TABLE IF NOT EXISTS `llm_provider_config` (
   `id` VARCHAR(64) NOT NULL,
   `base_url` VARCHAR(512) NOT NULL,
@@ -320,5 +327,5 @@ CREATE TABLE IF NOT EXISTS `rag_session_knowledge_bases` (
   PRIMARY KEY (`session_id`, `knowledge_base_id`),
   FOREIGN KEY (`session_id`) REFERENCES `rag_chat_sessions` (`id`) ON DELETE CASCADE,
   FOREIGN KEY (`knowledge_base_id`) REFERENCES `knowledge_bases` (`id`) ON DELETE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
