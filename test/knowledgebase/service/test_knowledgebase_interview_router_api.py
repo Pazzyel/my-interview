@@ -15,7 +15,7 @@ from modules.knowledgebase.model.knowledgebase_question import (
     QuestionGenStatus,
     QuestionGenStatusResponse,
 )
-from shared.api_test_fixture import load_router_module
+from api_test_fixture import load_router_module
 
 router_module = load_router_module(
     "modules.knowledgebase.router.knowledgebase_interview_router",

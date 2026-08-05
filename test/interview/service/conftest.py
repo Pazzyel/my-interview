@@ -38,6 +38,10 @@ def _install_interview_service_stubs() -> None:
         prompt_stub = types.ModuleType("infrastructure.prompt.prompt_service")
         prompt_stub.load_prompt = AsyncMock(return_value="mock prompt template")
         prompt_stub.has_short_memory = MagicMock(return_value=False)
+        prompt_stub.Role = types.SimpleNamespace(
+            USER=types.SimpleNamespace(value="user"),
+            ASSISTANT=types.SimpleNamespace(value="assistant"),
+        )
         sys.modules["infrastructure.prompt.prompt_service"] = prompt_stub
 
     if "infrastructure.llm" not in sys.modules:

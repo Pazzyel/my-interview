@@ -79,10 +79,8 @@ class KnowledgeBaseListService:
 
     async def update_category(self, db: AsyncSession, kb_id: int, category: Optional[str]) -> None:
         """更新知识库分类 / Update knowledge base category"""
-        if category is None:
-            return
-
-        await self.knowledgebase_repository.update_category(db, kb_id, category)
+        normalized_category = category.strip() if category and category.strip() else None
+        await self.knowledgebase_repository.update_category(db, kb_id, normalized_category)
 
 
     # ========== 搜索功能 / Search Features ==========
@@ -110,10 +108,10 @@ class KnowledgeBaseListService:
 
         return KnowledgeBaseStatsDTO(
             totalCount=total_count,
-            totalQuestions=total_questions,
-            totalAccess=total_access,
-            completedVectors=completed_vectors,
-            processingVectors=processing_vectors
+            totalQuestionCount=total_questions,
+            totalAccessCount=total_access,
+            completedCount=completed_vectors,
+            processingCount=processing_vectors
         )
 
     # ========== 下载功能 / Download Features ==========
@@ -158,7 +156,9 @@ class KnowledgeBaseListService:
             category=entity.category,
             originalFilename=entity.original_filename,
             fileSize=entity.file_size,
+            contentType=entity.content_type or "application/octet-stream",
             uploadedAt=entity.uploaded_at,
+            lastAccessedAt=entity.last_accessed_at,
             accessCount=entity.access_count,
             questionCount=entity.question_count,
             vectorStatus=entity.vector_status,

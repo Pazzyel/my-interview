@@ -61,6 +61,9 @@ def test_list_knowledge_bases_no_filter(service_and_mocks) -> None:
 
     assert len(result) == 1
     assert result[0].name == "Java基础"
+    payload = result[0].model_dump(by_alias=True)
+    assert payload["contentType"] == "application/pdf"
+    assert payload["lastAccessedAt"] is not None
     repo.find_all_ordered_by_uploaded_at_desc.assert_awaited_once()
 
 
@@ -138,7 +141,7 @@ def test_list_by_category(service_and_mocks) -> None:
     repo.find_by_category_ordered.assert_awaited_once_with(db, "后端")
 
 
-# 测试功能：update_category 调用 repository；None 时跳过。
+# 测试功能：update_category 调用 repository；None 时清空分类。
 def test_update_category(service_and_mocks) -> None:
     svc, repo, _, _ = service_and_mocks
 
@@ -146,10 +149,10 @@ def test_update_category(service_and_mocks) -> None:
     asyncio.run(svc.update_category(db, 1, "新分类"))
     repo.update_category.assert_awaited_once_with(db, 1, "新分类")
 
-    # None 时跳过
+    # None 时清空分类
     repo.update_category.reset_mock()
     asyncio.run(svc.update_category(db, 1, None))
-    repo.update_category.assert_not_awaited()
+    repo.update_category.assert_awaited_once_with(db, 1, None)
 
 
 # ==================== 搜索功能 ====================
@@ -191,10 +194,17 @@ def test_get_statistics(service_and_mocks) -> None:
     stats = asyncio.run(svc.get_statistics(db))
 
     assert stats.total_count == 5
-    assert stats.total_questions == 10
-    assert stats.total_access == 20
-    assert stats.completed_vectors == 3
-    assert stats.processing_vectors == 1
+    assert stats.total_question_count == 10
+    assert stats.total_access_count == 20
+    assert stats.completed_count == 3
+    assert stats.processing_count == 1
+    assert stats.model_dump(by_alias=True) == {
+        "totalCount": 5,
+        "totalQuestionCount": 10,
+        "totalAccessCount": 20,
+        "completedCount": 3,
+        "processingCount": 1,
+    }
 
 
 # ==================== 下载功能 ====================

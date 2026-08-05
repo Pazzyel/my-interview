@@ -15,6 +15,8 @@ class ResumeListItemDTO(BaseModel):
     latestScore: int | None = None
     lastAnalyzedAt: datetime | None = None
     interviewCount: int = 0
+    analyzeStatus: AsyncTaskStatus
+    analyzeError: str | None = None
 
 
 class ResumeAnalysisHistoryDTO(BaseModel):

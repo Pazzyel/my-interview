@@ -19,7 +19,9 @@ class KnowledgeBaseListItemDTO(BaseCamelSchema):
     category: Optional[str] = Field(default=None, description="知识库分类 / Knowledge base category")
     original_filename: str = Field(..., alias="originalFilename", description="原始文件名 / Original filename")
     file_size: int = Field(..., alias="fileSize", description="文件大小 / File size")
+    content_type: str = Field(..., alias="contentType", description="内容类型 / Content type")
     uploaded_at: datetime = Field(..., alias="uploadedAt", description="上传时间 / Upload time")
+    last_accessed_at: datetime = Field(..., alias="lastAccessedAt", description="最后访问时间 / Last access time")
     access_count: int = Field(default=0, alias="accessCount", description="访问次数 / Access count")
     question_count: int = Field(default=0, alias="questionCount", description="提问次数 / Question count")
     vector_status: VectorStatus = Field(default=VectorStatus.PENDING, alias="vectorStatus", description="向量化状态 / Vectorization status")
@@ -37,8 +39,8 @@ class KnowledgeBaseStatsDTO(BaseCamelSchema):
     KnowledgeBase statistics Data Transfer Object (DTO).
     """
     total_count: int = Field(..., alias="totalCount", description="总知识库数量 / Total knowledge base count")
-    total_questions: int = Field(..., alias="totalQuestions", description="总提问次数 / Total question count")
-    total_access: int = Field(..., alias="totalAccess", description="总访问次数 / Total access count")
-    completed_vectors: int = Field(..., alias="completedVectors", description="已完成向量化的知识库数量 / Completed vectorizations count")
-    processing_vectors: int = Field(..., alias="processingVectors", description="正在处理向量化的知识库数量 / Processing vectorizations count")
+    total_question_count: int = Field(..., alias="totalQuestionCount", description="总提问次数 / Total question count")
+    total_access_count: int = Field(..., alias="totalAccessCount", description="总访问次数 / Total access count")
+    completed_count: int = Field(..., alias="completedCount", description="已完成向量化的知识库数量 / Completed vectorizations count")
+    processing_count: int = Field(..., alias="processingCount", description="正在处理向量化的知识库数量 / Processing vectorizations count")
 

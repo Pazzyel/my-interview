@@ -111,7 +111,7 @@ async def get_uncategorized(
     return Result.success(data=items)
 
 class CategoryUpdateReq(BaseCamelSchema):
-    category: str
+    category: Optional[str] = None
 
 @router.put("/{kb_id}/category", response_model=Result[None])
 async def update_category(

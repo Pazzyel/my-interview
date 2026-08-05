@@ -1,7 +1,9 @@
 import logging
+import urllib.parse
 from typing import Dict, Any
 
 from fastapi import APIRouter, File, UploadFile, Depends
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.dependencies import resume_upload_service, resume_history_service, resume_delete_service
@@ -51,6 +53,21 @@ async def get_resume_detail(
     logger.info("Request arrived: GET /api/resumes/%s/detail", resume_id)
     detail: ResumeDetailDTO = await resume_history_service.get_resume_detail(db, resume_id)
     return Result.success(data=detail)
+
+
+@router.get("/{resume_id}/export")
+async def export_analysis_pdf(
+    resume_id: int,
+    db: AsyncSession = Depends(get_async_session),
+) -> Response:
+    logger.info("Request arrived: GET /api/resumes/%s/export", resume_id)
+    filename, content = await resume_history_service.export_analysis_pdf(db, resume_id)
+    encoded_filename = urllib.parse.quote(filename, safe="")
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"},
+    )
 
 
 @router.delete("/{resume_id}")
