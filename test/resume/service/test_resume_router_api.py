@@ -1,4 +1,5 @@
 import asyncio
+import io
 import importlib
 import json
 import os
@@ -11,6 +12,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pypdf import PdfReader
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = PROJECT_ROOT / "src"
@@ -104,6 +106,8 @@ def test_get_all_resumes_api_returns_list(api_client_and_context: tuple[TestClie
     assert payload["data"][0]["id"] == 1
     assert payload["data"][0]["latestScore"] == 88
     assert payload["data"][0]["interviewCount"] == 1
+    assert payload["data"][0]["analyzeStatus"] == "COMPLETED"
+    assert payload["data"][0]["analyzeError"] is None
 
 
 # 测试了什么功能：简历详情接口返回分析历史与面试历史。
@@ -119,6 +123,20 @@ def test_get_resume_detail_api_returns_detail(api_client_and_context: tuple[Test
     assert len(payload["data"]["analyses"]) == 1
     assert payload["data"]["analyses"][0]["overallScore"] == 88
     assert len(payload["data"]["interviews"]) == 1
+
+
+def test_export_analysis_pdf_returns_valid_pdf(
+    api_client_and_context: tuple[TestClient, ResumeApiTestContext],
+) -> None:
+    client, _ = api_client_and_context
+
+    response = client.get("/api/resumes/1/export")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert "filename*=UTF-8''" in response.headers["content-disposition"]
+    reader = PdfReader(io.BytesIO(response.content))
+    assert len(reader.pages) >= 1
 
 
 # 测试了什么功能：上传新简历时创建记录并发送异步分析任务。

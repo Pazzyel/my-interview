@@ -42,7 +42,9 @@ class MockKnowledgeBaseListService:
                     category="后端",
                     originalFilename="java.pdf",
                     fileSize=2048,
+                    contentType="application/pdf",
                     uploadedAt=datetime.now(),
+                    lastAccessedAt=datetime.now(),
                     accessCount=2,
                     questionCount=3,
                     vectorStatus=VectorStatus.COMPLETED,
@@ -53,10 +55,10 @@ class MockKnowledgeBaseListService:
         self.get_statistics = AsyncMock(
             return_value=KnowledgeBaseStatsDTO(
                 totalCount=1,
-                totalQuestions=3,
-                totalAccess=2,
-                completedVectors=1,
-                processingVectors=0,
+                totalQuestionCount=3,
+                totalAccessCount=2,
+                completedCount=1,
+                processingCount=0,
             )
         )
         self.get_all_categories = AsyncMock(return_value=["后端"])
@@ -69,7 +71,9 @@ class MockKnowledgeBaseListService:
                     category="后端",
                     originalFilename="python.pdf",
                     fileSize=2048,
+                    contentType="application/pdf",
                     uploadedAt=datetime.now(),
+                    lastAccessedAt=datetime.now(),
                     accessCount=2,
                     questionCount=3,
                     vectorStatus=VectorStatus.COMPLETED,

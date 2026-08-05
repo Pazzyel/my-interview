@@ -18,7 +18,7 @@ if str(TEST_ROOT) not in sys.path:
 if str(SHARED_ROOT) not in sys.path:
     sys.path.insert(0, str(SHARED_ROOT))
 
-from shared.api_test_fixture import apply_sqlite_db_override, create_sqlite_factory, load_router_module
+from api_test_fixture import apply_sqlite_db_override, create_sqlite_factory, load_router_module
 from knowledgebase_api_mocks import KnowledgeBaseApiTestContext, create_knowledgebase_api_test_context
 
 knowledgebase_router_module = load_router_module(
@@ -201,6 +201,17 @@ def test_update_category(
 
     assert response.status_code == 200
     assert context.knowledgebase_list_service.update_category.await_count == 1
+
+
+def test_clear_category_accepts_null(
+    api_client_and_context: tuple[TestClient, KnowledgeBaseApiTestContext],
+) -> None:
+    client, context = api_client_and_context
+
+    response = client.put("/api/knowledgebase/1/category", json={"category": None})
+
+    assert response.status_code == 200
+    assert context.knowledgebase_list_service.update_category.await_args.args[2] is None
 
 
 # ==================== Search ====================

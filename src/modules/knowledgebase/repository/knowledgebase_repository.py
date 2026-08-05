@@ -179,7 +179,7 @@ class KnowledgeBaseRepository:
         )
         return [_to_entity(item) for item in result.scalars().all()]
 
-    async def update_category(self, db: AsyncSession, kb_id: int, category: str) -> None:
+    async def update_category(self, db: AsyncSession, kb_id: int, category: Optional[str]) -> None:
         stmt = update(KnowledgeBaseORM).where(KnowledgeBaseORM.id == kb_id).values(category=category)
         result = await db.execute(stmt)
         if result.rowcount == 0: # type: ignore

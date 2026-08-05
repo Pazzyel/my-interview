@@ -2,11 +2,18 @@ import logging
 import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.mysql.aio import AIOMySQLSaver
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from common.api_error_handlers import (
+    business_exception_handler,
+    global_exception_handler,
+    http_exception_handler,
+    validation_exception_handler,
+)
 from common.config import app_config
 from common.dependencies import (
     knowledgebase_query_service,
@@ -40,7 +47,6 @@ from modules.voiceinterview.router import websocket_router as voice_interview_we
 from modules.interviewschedule.router import interview_schedule_router
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -99,29 +105,10 @@ app.include_router(voice_interview_router.router)
 app.include_router(voice_interview_websocket_router.router)
 app.include_router(interview_schedule_router.router)
 
-@app.exception_handler(BusinessException)
-async def business_exception_handler(request: Request, exc: BusinessException):
-    logger.error(f"Business error occurred: {exc.code} - {exc.message}")
-    return JSONResponse(
-        status_code=400,
-        content={
-            "code": 400,
-            "message": exc.message,
-            "data": None
-        }
-    )
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Global error occurred: {str(exc)}")
-    return JSONResponse(
-        status_code=500,
-        content={
-            "code": 500,
-            "message": "Internal Server Error",
-            "data": None
-        }
-    )
+app.add_exception_handler(BusinessException, business_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+app.add_exception_handler(Exception, global_exception_handler)
 
 origins = [
     # 如果你还有其他前端地址，可以继续往这里加

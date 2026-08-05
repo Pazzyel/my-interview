@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from common.exceptions import BusinessException, ErrorCode
 from common.llm_provider import LlmProviderRegistry, LlmProviderResolver
 from common.models import AsyncTaskStatus
+from infrastructure.export.pdf_export_service import build_text_pdf
 from modules.interview.listener.evaluate_message_producer import EvaluateMessageProducer
 from modules.interview.model.interview_agent_dto import (
     CreateInterviewRequest, CurrentQuestionResponse, InterviewQuestionDTO,
@@ -198,7 +199,7 @@ class InterviewAgentService:
             raise BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_FOUND, "面试会话不存在")
         session = await self._restore_session(db, entity)
         if session.status not in {SessionStatus.COMPLETED.value, SessionStatus.EVALUATED.value}:
-            raise BusinessException(ErrorCode.VALIDATION_ERROR, "面试尚未完成，无法生成报告")
+            raise BusinessException(ErrorCode.INTERVIEW_NOT_COMPLETED, "面试尚未完成，无法生成报告")
         await self.interview_repository.update_evaluate_status(db, session_id, AsyncTaskStatus.PROCESSING.value, None)
         report = await self.evaluation_agent_service.evaluate(
             resume_text=session.resume_text, questions=session.questions,
@@ -230,14 +231,14 @@ class InterviewAgentService:
         if detail is None:
             raise BusinessException(ErrorCode.INTERVIEW_SESSION_NOT_FOUND, "面试会话不存在")
         if detail.evaluateStatus != AsyncTaskStatus.COMPLETED or detail.overallScore is None:
-            raise BusinessException(ErrorCode.VALIDATION_ERROR, "评估结果尚未完成")
+            raise BusinessException(ErrorCode.INTERVIEW_NOT_COMPLETED, "评估结果尚未完成")
         lines = [
             f"模拟面试报告 {session_id}", f"生成时间 {datetime.now().isoformat()}", "",
             f"总分 {detail.overallScore}", f"总体评价 {detail.overallFeedback or ''}", "",
             "优势", *[f"- {item}" for item in detail.strengths], "",
             "改进建议", *[f"- {item}" for item in detail.improvements],
         ]
-        return f"interview_report_{session_id}.pdf", "\n".join(lines).encode("utf-8")
+        return f"interview_report_{session_id}.pdf", build_text_pdf("模拟面试报告", lines)
 
     async def _restore_session(self, db: AsyncSession, entity: InterviewSessionEntity) -> InterviewSessionDTO:
         resume_text = await self.interview_repository.get_resume_text_by_session_id(db, entity.sessionId)
