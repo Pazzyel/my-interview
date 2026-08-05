@@ -5,7 +5,12 @@ from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from modules.llmprovider.model.llm_provider_dto import DefaultProviderDTO, LlmProviderDTO
+from modules.llmprovider.model.llm_provider_dto import (
+    AsrConfigDTO,
+    DefaultProviderDTO,
+    LlmProviderDTO,
+    TtsConfigDTO,
+)
 
 
 class FakeProviderService:
@@ -34,8 +39,36 @@ class FakeProviderService:
 
 
 fake_service = FakeProviderService()
+
+
+class FakeVoiceProviderConfigService:
+    def __init__(self):
+        self.asr = AsrConfigDTO(
+            url="wss://voice.example/realtime", model="asr-model", maskedApiKey="sec***ret",
+            language="zh", format="pcm", sampleRate=16000, enableTurnDetection=True,
+            turnDetectionType="server_vad", turnDetectionThreshold=0.2,
+            turnDetectionSilenceDurationMs=800,
+        )
+        self.tts = TtsConfigDTO(
+            model="tts-model", maskedApiKey="sec***ret", voice="Cherry", format="pcm",
+            sampleRate=24000, mode="commit", languageType="Chinese", speechRate=1.0,
+            volume=60,
+        )
+
+    async def get_asr(self, _db): return self.asr
+    async def get_tts(self, _db): return self.tts
+    async def update_asr(self, _db, request): self.asr.model = request.model or self.asr.model
+    async def update_tts(self, _db, request): self.tts.voice = request.voice or self.tts.voice
+    async def test_asr(self, _db):
+        return {"success": True, "message": "连接成功", "model": self.asr.model}
+
+
+fake_voice_service = FakeVoiceProviderConfigService()
 previous_dependencies = sys.modules.get("common.dependencies")
-sys.modules["common.dependencies"] = SimpleNamespace(llm_provider_service=fake_service)
+sys.modules["common.dependencies"] = SimpleNamespace(
+    llm_provider_service=fake_service,
+    voice_provider_config_service=fake_voice_service,
+)
 router_module = importlib.import_module("modules.llmprovider.router.llm_provider_router")
 if previous_dependencies is None:
     sys.modules.pop("common.dependencies", None)
@@ -82,3 +115,25 @@ def test_crud_test_and_default_endpoints_have_no_auth_requirement():
     defaults = {"defaultProvider": "demo", "defaultEmbeddingProvider": "demo"}
     assert client.put("/api/llm-provider/default-provider", json=defaults).status_code == 200
     assert client.put("/api/llm-provider/default-embedding-provider", json=defaults).status_code == 200
+
+
+def test_voice_settings_endpoints_match_frontend_contract():
+    asr = client.get("/api/llm-provider/voice/asr")
+    assert asr.status_code == 200
+    assert asr.json()["data"] == {
+        "url": "wss://voice.example/realtime", "model": "asr-model",
+        "maskedApiKey": "sec***ret", "language": "zh", "format": "pcm",
+        "sampleRate": 16000, "enableTurnDetection": True,
+        "turnDetectionType": "server_vad", "turnDetectionThreshold": 0.2,
+        "turnDetectionSilenceDurationMs": 800,
+    }
+    tts = client.get("/api/llm-provider/voice/tts")
+    assert tts.status_code == 200
+    assert tts.json()["data"]["languageType"] == "Chinese"
+    assert tts.json()["data"]["speechRate"] == 1.0
+    assert client.put("/api/llm-provider/voice/asr", json={"model": "asr-new"}).json()["data"] is None
+    assert client.put("/api/llm-provider/voice/tts", json={"voice": "Serena"}).json()["data"] is None
+    tested = client.post("/api/llm-provider/voice/asr/test")
+    assert tested.status_code == 200
+    assert tested.json()["data"]["success"] is True
+    assert client.get("/api/llm-provider/voice/asr").status_code == 200

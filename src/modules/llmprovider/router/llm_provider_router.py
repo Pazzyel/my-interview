@@ -1,15 +1,19 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from common.dependencies import llm_provider_service
+from common.dependencies import llm_provider_service, voice_provider_config_service
 from common.models import Result
 from infrastructure.database.connection import get_async_session
 from modules.llmprovider.model.llm_provider_dto import (
     DefaultProviderDTO,
+    AsrConfigDTO,
+    AsrConfigRequest,
     LlmProviderCreateRequest,
     LlmProviderDTO,
     LlmProviderUpdateRequest,
     ProviderTestResultDTO,
+    TtsConfigDTO,
+    TtsConfigRequest,
 )
 
 router = APIRouter(prefix="/api/llm-provider", tags=["LLM Provider"])
@@ -47,6 +51,39 @@ async def set_default_embedding_provider(
     return Result.success(
         await llm_provider_service.set_default_embedding(db, request.default_embedding_provider)
     )
+
+
+@router.get("/voice/asr", response_model=Result[AsrConfigDTO])
+async def get_asr_config(db: AsyncSession = Depends(get_async_session)):
+    return Result.success(await voice_provider_config_service.get_asr(db))
+
+
+@router.put("/voice/asr", response_model=Result[None])
+async def update_asr_config(
+    request: AsrConfigRequest,
+    db: AsyncSession = Depends(get_async_session),
+):
+    await voice_provider_config_service.update_asr(db, request)
+    return Result.success()
+
+
+@router.get("/voice/tts", response_model=Result[TtsConfigDTO])
+async def get_tts_config(db: AsyncSession = Depends(get_async_session)):
+    return Result.success(await voice_provider_config_service.get_tts(db))
+
+
+@router.put("/voice/tts", response_model=Result[None])
+async def update_tts_config(
+    request: TtsConfigRequest,
+    db: AsyncSession = Depends(get_async_session),
+):
+    await voice_provider_config_service.update_tts(db, request)
+    return Result.success()
+
+
+@router.post("/voice/asr/test", response_model=Result[ProviderTestResultDTO])
+async def test_asr_config(db: AsyncSession = Depends(get_async_session)):
+    return Result.success(await voice_provider_config_service.test_asr(db))
 
 
 @router.post("", response_model=Result[LlmProviderDTO])

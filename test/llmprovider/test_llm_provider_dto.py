@@ -1,7 +1,43 @@
 import pytest
 from pydantic import ValidationError
 
-from modules.llmprovider.model.llm_provider_dto import LlmProviderCreateRequest, LlmProviderDTO
+from modules.llmprovider.model.llm_provider_dto import (
+    AsrConfigRequest,
+    LlmProviderCreateRequest,
+    LlmProviderDTO,
+    TtsConfigRequest,
+)
+
+
+def test_voice_requests_accept_camel_case_partial_updates() -> None:
+    asr = AsrConfigRequest.model_validate({
+        "sampleRate": 16000, "enableTurnDetection": False,
+        "turnDetectionSilenceDurationMs": 0,
+    })
+    assert asr.sample_rate == 16000
+    assert asr.enable_turn_detection is False
+    assert asr.model_fields_set == {
+        "sample_rate", "enable_turn_detection", "turn_detection_silence_duration_ms"
+    }
+    tts = TtsConfigRequest.model_validate({"speechRate": 1.2, "volume": 70})
+    assert tts.model_dump(by_alias=True, exclude_none=True) == {"speechRate": 1.2, "volume": 70}
+
+
+@pytest.mark.parametrize(
+    "request_type,payload",
+    [
+        (AsrConfigRequest, {"url": "https://not-websocket.example"}),
+        (AsrConfigRequest, {"model": " "}),
+        (AsrConfigRequest, {"sampleRate": 0}),
+        (AsrConfigRequest, {"turnDetectionThreshold": 1.1}),
+        (TtsConfigRequest, {"apiKey": " "}),
+        (TtsConfigRequest, {"speechRate": 0}),
+        (TtsConfigRequest, {"volume": 101}),
+    ],
+)
+def test_voice_requests_reject_invalid_values(request_type, payload) -> None:
+    with pytest.raises(ValidationError):
+        request_type.model_validate(payload)
 
 
 def test_create_request_accepts_frontend_camel_case():
