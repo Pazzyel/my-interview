@@ -1,7 +1,11 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from infrastructure.database.models import LlmGlobalSettingORM, LlmProviderConfigORM
+from infrastructure.database.models import (
+    LlmGlobalSettingORM,
+    LlmProviderConfigORM,
+    VoiceProviderConfigORM,
+)
 
 
 class LlmProviderRepository:
@@ -27,4 +31,13 @@ class LlmProviderRepository:
 
     async def save_settings(self, db: AsyncSession, settings: LlmGlobalSettingORM) -> None:
         db.add(settings)
+        await db.flush()
+
+
+class VoiceProviderConfigRepository:
+    async def get(self, db: AsyncSession) -> VoiceProviderConfigORM | None:
+        return await db.get(VoiceProviderConfigORM, 1)
+
+    async def save(self, db: AsyncSession, config: VoiceProviderConfigORM) -> None:
+        db.add(config)
         await db.flush()

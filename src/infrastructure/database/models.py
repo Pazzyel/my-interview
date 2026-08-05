@@ -53,6 +53,35 @@ class LlmGlobalSettingORM(Base):
     )
 
 
+class VoiceProviderConfigORM(Base):
+    __tablename__ = "voice_provider_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    api_key_ciphertext: Mapped[str | None] = mapped_column(String(4096), nullable=True)
+    api_key_nonce: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    asr_url: Mapped[str] = mapped_column(String(512), nullable=False)
+    asr_model: Mapped[str] = mapped_column(String(128), nullable=False)
+    asr_language: Mapped[str] = mapped_column(String(32), nullable=False)
+    asr_format: Mapped[str] = mapped_column(String(32), nullable=False)
+    asr_sample_rate: Mapped[int] = mapped_column(Integer, nullable=False)
+    asr_enable_turn_detection: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    asr_turn_detection_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    asr_turn_detection_threshold: Mapped[float] = mapped_column(Float, nullable=False)
+    asr_turn_detection_silence_duration_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    tts_model: Mapped[str] = mapped_column(String(128), nullable=False)
+    tts_voice: Mapped[str] = mapped_column(String(64), nullable=False)
+    tts_format: Mapped[str] = mapped_column(String(32), nullable=False)
+    tts_sample_rate: Mapped[int] = mapped_column(Integer, nullable=False)
+    tts_mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    tts_language_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    tts_speech_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    tts_volume: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, onupdate=datetime.now, nullable=False
+    )
+
+
 class InterviewScheduleORM(Base):
     __tablename__ = "interview_schedule"
     __table_args__ = (

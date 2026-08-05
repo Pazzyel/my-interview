@@ -13,10 +13,14 @@ from modules.interview.service.interview_history_service import InterviewHistory
 from modules.interview.service.interview_persistence_service import InterviewPersistenceService
 from modules.interview.service.interview_skill_service import InterviewSkillService
 from modules.interview.service.interview_creation_coordinator import InterviewCreationCoordinator
-from modules.llmprovider.repository.llm_provider_repository import LlmProviderRepository
+from modules.llmprovider.repository.llm_provider_repository import (
+    LlmProviderRepository,
+    VoiceProviderConfigRepository,
+)
 from modules.llmprovider.service.api_key_encryption_service import ApiKeyEncryptionService
 from modules.llmprovider.service.llm_provider_registry import LlmProviderRegistry
 from modules.llmprovider.service.llm_provider_service import LlmProviderService
+from modules.llmprovider.service.voice_provider_config_service import VoiceProviderConfigService
 from modules.interviewschedule.repository.interview_schedule_repository import InterviewScheduleRepository
 from modules.interviewschedule.service.interview_parse_service import InterviewParseService
 from modules.interviewschedule.service.interview_schedule_service import InterviewScheduleService
@@ -267,7 +271,13 @@ voice_asr_provider = DashScopeAsrProvider(DashScopeAsrConfig(
     api_key=app_config.voice_dashscope_api_key,
     url=app_config.voice_dashscope_realtime_url,
     model=app_config.voice_asr_model,
+    language=app_config.voice_asr_language,
+    format=app_config.voice_asr_format,
     sample_rate=app_config.voice_asr_sample_rate,
+    enable_turn_detection=app_config.voice_asr_enable_turn_detection,
+    turn_detection_type=app_config.voice_asr_turn_detection_type,
+    turn_detection_threshold=app_config.voice_asr_turn_detection_threshold,
+    turn_detection_silence_duration_ms=app_config.voice_asr_turn_detection_silence_duration_ms,
     connect_timeout_seconds=app_config.voice_external_connect_timeout_seconds,
 ))
 voice_tts_provider = DashScopeTtsProvider(DashScopeTtsConfig(
@@ -275,10 +285,22 @@ voice_tts_provider = DashScopeTtsProvider(DashScopeTtsConfig(
     url=app_config.voice_dashscope_realtime_url,
     model=app_config.voice_tts_model,
     voice=app_config.voice_tts_voice,
+    format=app_config.voice_tts_format,
     sample_rate=app_config.voice_tts_sample_rate,
+    mode=app_config.voice_tts_mode,
+    language_type=app_config.voice_tts_language_type,
+    speech_rate=app_config.voice_tts_speech_rate,
+    volume=app_config.voice_tts_volume,
     connect_timeout_seconds=app_config.voice_external_connect_timeout_seconds,
     response_timeout_seconds=app_config.voice_tts_timeout_seconds,
 ))
+voice_provider_config_repository = VoiceProviderConfigRepository()
+voice_provider_config_service = VoiceProviderConfigService(
+    voice_provider_config_repository,
+    api_key_encryption_service,
+    voice_asr_provider,
+    voice_tts_provider,
+)
 voice_runtime_manager = VoiceInterviewRuntimeManager(
     session_service=voice_interview_session_service,
     conversation_service=voice_conversation_service,

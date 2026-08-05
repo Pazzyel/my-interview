@@ -1,4 +1,5 @@
 import re
+from urllib.parse import urlparse
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 
@@ -89,3 +90,95 @@ class ProviderTestResultDTO(BaseCamelSchema):
     success: bool
     message: str
     model: str
+
+
+class AsrConfigDTO(BaseCamelSchema):
+    url: str
+    model: str
+    masked_api_key: str
+    language: str
+    format: str
+    sample_rate: int
+    enable_turn_detection: bool
+    turn_detection_type: str
+    turn_detection_threshold: float
+    turn_detection_silence_duration_ms: int
+
+
+class TtsConfigDTO(BaseCamelSchema):
+    model: str
+    masked_api_key: str
+    voice: str
+    format: str
+    sample_rate: int
+    mode: str
+    language_type: str
+    speech_rate: float
+    volume: int
+
+
+class VoiceConfigRequest(BaseCamelSchema):
+    api_key: SecretStr | None = None
+
+    @field_validator("api_key", mode="before")
+    @classmethod
+    def validate_optional_api_key(cls, value):
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("apiKey must not be blank")
+        return value.strip()
+
+
+class AsrConfigRequest(VoiceConfigRequest):
+    url: str | None = None
+    model: str | None = None
+    language: str | None = None
+    format: str | None = None
+    sample_rate: int | None = Field(default=None, gt=0)
+    enable_turn_detection: bool | None = None
+    turn_detection_type: str | None = None
+    turn_detection_threshold: float | None = Field(default=None, ge=0, le=1)
+    turn_detection_silence_duration_ms: int | None = Field(default=None, ge=0)
+
+    @field_validator("model", "language", "format", "turn_detection_type")
+    @classmethod
+    def validate_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+    @field_validator("url")
+    @classmethod
+    def validate_websocket_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        parsed = urlparse(value)
+        if parsed.scheme not in {"ws", "wss"} or not parsed.hostname:
+            raise ValueError("url must be a valid WebSocket URL")
+        return value.rstrip("/")
+
+
+class TtsConfigRequest(VoiceConfigRequest):
+    model: str | None = None
+    voice: str | None = None
+    format: str | None = None
+    sample_rate: int | None = Field(default=None, gt=0)
+    mode: str | None = None
+    language_type: str | None = None
+    speech_rate: float | None = Field(default=None, gt=0)
+    volume: int | None = Field(default=None, ge=0, le=100)
+
+    @field_validator("model", "voice", "format", "mode", "language_type")
+    @classmethod
+    def validate_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value

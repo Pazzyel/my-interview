@@ -28,7 +28,12 @@ class DashScopeAsrConfig:
     url: str = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
     model: str = "qwen3-asr-flash-realtime"
     language: str = "zh"
+    format: str = "pcm"
     sample_rate: int = 16000
+    enable_turn_detection: bool = True
+    turn_detection_type: str = "server_vad"
+    turn_detection_threshold: float = 0.0
+    turn_detection_silence_duration_ms: int = 1000
     connect_timeout_seconds: float = 10.0
     receive_timeout_seconds: float = 45.0
 
@@ -39,9 +44,12 @@ class DashScopeTtsConfig:
     url: str = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
     model: str = "qwen-tts-realtime"
     voice: str = "Cherry"
+    format: str = "pcm"
     sample_rate: int = 24000
     mode: str = "commit"
     language_type: str = "Chinese"
+    speech_rate: float = 1.0
+    volume: int = 60
     connect_timeout_seconds: float = 10.0
     response_timeout_seconds: float = 30.0
 
@@ -66,10 +74,18 @@ def _asr_session_update(config: DashScopeAsrConfig) -> dict[str, Any]:
         "type": "session.update",
         "session": {
             "modalities": ["text"],
-            "input_audio_format": "pcm",
+            "input_audio_format": config.format,
             "sample_rate": config.sample_rate,
             "input_audio_transcription": {"language": config.language},
-            "turn_detection": {"type": "server_vad"},
+            "turn_detection": (
+                {
+                    "type": config.turn_detection_type,
+                    "threshold": config.turn_detection_threshold,
+                    "silence_duration_ms": config.turn_detection_silence_duration_ms,
+                }
+                if config.enable_turn_detection
+                else None
+            ),
         },
     }
 
@@ -80,10 +96,12 @@ def _tts_session_update(config: DashScopeTtsConfig) -> dict[str, Any]:
         "type": "session.update",
         "session": {
             "voice": config.voice,
-            "response_format": "pcm",
+            "response_format": config.format,
             "sample_rate": config.sample_rate,
             "mode": config.mode,
             "language_type": config.language_type,
+            "speech_rate": config.speech_rate,
+            "volume": config.volume,
         },
     }
 

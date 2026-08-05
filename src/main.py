@@ -22,6 +22,7 @@ from common.dependencies import (
     voice_evaluate_message_consumer,
     voice_evaluation_recovery_service,
     voice_runtime_manager,
+    voice_provider_config_service,
     schedule_status_updater,
     question_generation_message_producer,
     question_generation_message_consumer,
@@ -44,6 +45,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await llm_provider_service.initialize()
+    await voice_provider_config_service.initialize()
     async with AIOMySQLSaver.from_conn_string(app_config.DB_URI) as checkpointer:
         await checkpointer.setup()
         await knowledgebase_query_service.build_graph(checkpointer)

@@ -39,14 +39,28 @@ def test_missing_api_key_is_checked_only_when_provider_is_used() -> None:
 
 
 def test_realtime_session_events_match_dashscope_contract() -> None:
-    asr = _asr_session_update(DashScopeAsrConfig(api_key="key"))
+    asr = _asr_session_update(DashScopeAsrConfig(
+        api_key="key", format="wav", enable_turn_detection=True,
+        turn_detection_type="server_vad", turn_detection_threshold=0.3,
+        turn_detection_silence_duration_ms=750,
+    ))
     assert asr["event_id"].startswith("event_")
-    assert asr["session"]["input_audio_format"] == "pcm"
+    assert asr["session"]["input_audio_format"] == "wav"
     assert asr["session"]["sample_rate"] == 16000
     assert asr["session"]["input_audio_transcription"] == {"language": "zh"}
+    assert asr["session"]["turn_detection"] == {
+        "type": "server_vad", "threshold": 0.3, "silence_duration_ms": 750
+    }
+    assert _asr_session_update(DashScopeAsrConfig(
+        api_key="key", enable_turn_detection=False
+    ))["session"]["turn_detection"] is None
 
-    tts = _tts_session_update(DashScopeTtsConfig(api_key="key"))
+    tts = _tts_session_update(DashScopeTtsConfig(
+        api_key="key", format="wav", speech_rate=1.2, volume=75
+    ))
     assert tts["event_id"].startswith("event_")
-    assert tts["session"]["response_format"] == "pcm"
+    assert tts["session"]["response_format"] == "wav"
     assert tts["session"]["sample_rate"] == 24000
     assert tts["session"]["mode"] == "commit"
+    assert tts["session"]["speech_rate"] == 1.2
+    assert tts["session"]["volume"] == 75
