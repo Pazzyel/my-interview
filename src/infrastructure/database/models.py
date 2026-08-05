@@ -6,6 +6,10 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from common.models import AsyncTaskStatus
 from modules.knowledgebase.model.knowledgebase_entity import VectorStatus
+from modules.knowledgebase.model.knowledgebase_question import (
+    KnowledgeBaseQuestionStatus,
+    QuestionGenStatus,
+)
 from modules.interviewschedule.model import InterviewStatus, InterviewType
 
 
@@ -152,6 +156,9 @@ class InterviewSessionORM(Base):
         default=AsyncTaskStatus.PENDING,
     )
     evaluate_error: Mapped[str] = mapped_column(String(500), nullable=True)
+    source_type: Mapped[str] = mapped_column(String(32), default="NORMAL", nullable=False)
+    knowledge_base_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    interview_category: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     answers: Mapped[list["InterviewAnswerORM"]] = relationship(
         "InterviewAnswerORM",
@@ -326,6 +333,58 @@ class KnowledgeBaseORM(Base):
     )
     vector_error: Mapped[str] = mapped_column(String(500), nullable=True)
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+    question_gen_status: Mapped[QuestionGenStatus] = mapped_column(
+        SQLEnum(QuestionGenStatus, name="question_gen_status", create_type=False),
+        default=QuestionGenStatus.NONE,
+        nullable=False,
+    )
+    question_gen_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    question_gen_task_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    question_gen_config: Mapped[str | None] = mapped_column(Text, nullable=True)
+    question_gen_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    question_gen_saved_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    question_gen_skipped_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    question_gen_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    questions: Mapped[list["KnowledgeBaseQuestionORM"]] = relationship(
+        back_populates="knowledge_base", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class KnowledgeBaseQuestionORM(Base):
+    __tablename__ = "knowledge_base_questions"
+    __table_args__ = (
+        Index("ix_kb_question_kb_status", "knowledge_base_id", "status"),
+        Index("ix_kb_question_skill_difficulty", "skill_id", "difficulty"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    knowledge_base_id: Mapped[int] = mapped_column(
+        ForeignKey("knowledge_bases.id", ondelete="CASCADE"), nullable=False
+    )
+    skill_id: Mapped[str] = mapped_column(String(64), default="knowledge-base", nullable=False)
+    difficulty: Mapped[str] = mapped_column(String(16), default="mid", nullable=False)
+    type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    category: Mapped[str] = mapped_column(String(64), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    topic_summary: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    reference_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    key_points_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scoring_rubric: Mapped[str | None] = mapped_column(Text, nullable=True)
+    follow_ups_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_context: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kb_content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[KnowledgeBaseQuestionStatus] = mapped_column(
+        SQLEnum(KnowledgeBaseQuestionStatus, name="knowledge_base_question_status", create_type=False),
+        default=KnowledgeBaseQuestionStatus.DRAFT,
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, onupdate=datetime.now, nullable=False
+    )
+
+    knowledge_base: Mapped[KnowledgeBaseORM] = relationship(back_populates="questions")
 
 # 会话和知识库的多对多关联表
 # Many-to-many relationship table between sessions and knowledge bases

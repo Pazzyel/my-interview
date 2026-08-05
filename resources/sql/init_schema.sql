@@ -90,6 +90,9 @@ CREATE TABLE IF NOT EXISTS `interview_sessions` (
   `skill_id` VARCHAR(64) NOT NULL DEFAULT 'java-backend',
   `difficulty` VARCHAR(16) NOT NULL DEFAULT 'mid',
   `llm_provider` VARCHAR(50) NOT NULL DEFAULT 'default',
+  `source_type` VARCHAR(32) NOT NULL DEFAULT 'NORMAL',
+  `knowledge_base_id` INT NULL,
+  `interview_category` VARCHAR(64) NULL,
   `total_questions` INT NOT NULL,
   `current_question_index` INT NOT NULL DEFAULT 0,
   `status` ENUM('CREATED', 'IN_PROGRESS', 'COMPLETED', 'EVALUATED') NOT NULL DEFAULT 'CREATED',
@@ -108,6 +111,7 @@ CREATE TABLE IF NOT EXISTS `interview_sessions` (
   UNIQUE KEY `uq_interview_sessions_request_id` (`request_id`),
   KEY `ix_interview_sessions_resume_id` (`resume_id`),
   KEY `ix_interview_sessions_skill_created` (`skill_id`, `created_at`),
+  KEY `ix_interview_sessions_knowledge_base_id` (`knowledge_base_id`),
   CONSTRAINT `fk_interview_sessions_resume_id` FOREIGN KEY (`resume_id`) REFERENCES `resumes` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -215,8 +219,41 @@ CREATE TABLE IF NOT EXISTS `knowledge_bases` (
   `vector_status` ENUM('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED') NOT NULL DEFAULT 'PENDING',
   `vector_error` VARCHAR(500) NULL,
   `chunk_count` INT NOT NULL DEFAULT 0,
+  `question_gen_status` ENUM('NONE', 'QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED') NOT NULL DEFAULT 'NONE',
+  `question_gen_error` VARCHAR(500) NULL,
+  `question_gen_task_id` VARCHAR(36) NULL,
+  `question_gen_config` TEXT NULL,
+  `question_gen_message` VARCHAR(500) NULL,
+  `question_gen_saved_count` INT NOT NULL DEFAULT 0,
+  `question_gen_skipped_count` INT NOT NULL DEFAULT 0,
+  `question_gen_updated_at` DATETIME NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_knowledge_bases_file_hash` (`file_hash`)
+  UNIQUE KEY `uq_knowledge_bases_file_hash` (`file_hash`),
+  KEY `ix_kb_question_gen_status_updated` (`question_gen_status`, `question_gen_updated_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `knowledge_base_questions` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `knowledge_base_id` INT NOT NULL,
+  `skill_id` VARCHAR(64) NOT NULL DEFAULT 'knowledge-base',
+  `difficulty` VARCHAR(16) NOT NULL DEFAULT 'mid',
+  `type` VARCHAR(64) NULL,
+  `category` VARCHAR(64) NOT NULL,
+  `question` TEXT NOT NULL,
+  `topic_summary` VARCHAR(300) NULL,
+  `reference_answer` TEXT NULL,
+  `key_points_json` TEXT NULL,
+  `scoring_rubric` TEXT NULL,
+  `follow_ups_json` TEXT NULL,
+  `source_context` TEXT NULL,
+  `kb_content_hash` VARCHAR(64) NULL,
+  `status` ENUM('DRAFT', 'ACTIVE', 'ARCHIVED', 'STALE') NOT NULL DEFAULT 'DRAFT',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `ix_kb_question_kb_status` (`knowledge_base_id`, `status`),
+  KEY `ix_kb_question_skill_difficulty` (`skill_id`, `difficulty`),
+  CONSTRAINT `fk_kb_question_knowledge_base_id` FOREIGN KEY (`knowledge_base_id`) REFERENCES `knowledge_bases` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `rag_chat_sessions` (

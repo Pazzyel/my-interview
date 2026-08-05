@@ -81,6 +81,7 @@ def _install_knowledgebase_service_stubs() -> None:
             "knowledgebase_vector_service", "knowledgebase_count_service",
             "knowledgebase_upload_service", "knowledgebase_list_service",
             "knowledgebase_delete_service", "knowledgebase_query_service",
+            "knowledgebase_question_service", "knowledgebase_interview_service",
         ]:
             setattr(deps_stub, attr, MagicMock())
         sys.modules["common.dependencies"] = deps_stub

@@ -49,6 +49,10 @@ class AppConfigProperties(BaseSettings):
     kb_vectorize_topic: str = "kb-vectorize-topic"
     kb_vectorize_tag: str = "vectorize"
     kb_vectorize_consumer_group: str = "kb-vectorize-consumer-group"
+    kb_question_gen_topic: str = "kb-question-gen-topic"
+    kb_question_gen_tag: str = "generate"
+    kb_question_gen_producer_group: str = "kb-question-gen-producer-group"
+    kb_question_gen_consumer_group: str = "kb-question-gen-consumer-group"
     kb_allowed_types: list[str] = [
         "application/pdf",
         "application/msword",

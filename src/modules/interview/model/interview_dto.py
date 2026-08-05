@@ -30,6 +30,9 @@ class InterviewDetailDTO(BaseModel):
     evaluateStatus: AsyncTaskStatus | None = None
     evaluateError: str | None = None
     overallScore: int | None = None
+    sourceType: str | None = None
+    knowledgeBaseId: int | None = None
+    interviewCategory: str | None = None
     overallFeedback: str | None = None
     createdAt: datetime
     completedAt: datetime | None = None
@@ -48,5 +51,8 @@ class InterviewHistoryItemDTO(BaseModel):
     llmProvider: str = "default"
     status: str
     overallScore: int | None = None
+    sourceType: str | None = None
+    knowledgeBaseId: int | None = None
+    interviewCategory: str | None = None
     createdAt: datetime
     completedAt: datetime | None = None

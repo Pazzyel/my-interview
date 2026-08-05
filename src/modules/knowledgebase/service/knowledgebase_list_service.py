@@ -163,4 +163,7 @@ class KnowledgeBaseListService:
             questionCount=entity.question_count,
             vectorStatus=entity.vector_status,
             vectorError=entity.vector_error,
+            chunkCount=entity.chunk_count,
+            questionGenStatus=entity.question_gen_status,
+            questionGenError=entity.question_gen_error,
         )

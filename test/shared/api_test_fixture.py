@@ -3,6 +3,7 @@ import sys
 import types
 from pathlib import Path
 from typing import Iterable
+from unittest.mock import MagicMock
 
 from fastapi import APIRouter, FastAPI
 from starlette.responses import StreamingResponse
@@ -91,6 +92,7 @@ def load_router_module(module_name: str, dependency_fields: Iterable[str]):
         yield object()
 
     connection_stub.get_async_session = _stub_get_async_session
+    connection_stub.async_session_factory = MagicMock()
     sys.modules["infrastructure.database.connection"] = connection_stub
 
     return importlib.import_module(module_name)
