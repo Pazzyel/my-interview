@@ -6,8 +6,9 @@ from sqlalchemy import select, update, delete, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.exceptions import BusinessException, ErrorCode
-from infrastructure.database.models import KnowledgeBaseORM
+from infrastructure.database.models import KnowledgeBaseORM, KnowledgeBaseQuestionORM
 from modules.knowledgebase.model.knowledgebase_entity import KnowledgeBaseEntity, VectorStatus
+from modules.knowledgebase.model.knowledgebase_question import QuestionGenStatus
 
 
 def _to_entity(orm: KnowledgeBaseORM) -> KnowledgeBaseEntity:
@@ -29,6 +30,14 @@ def _to_entity(orm: KnowledgeBaseORM) -> KnowledgeBaseEntity:
         vector_status=orm.vector_status,
         vector_error=orm.vector_error,
         chunk_count=orm.chunk_count,
+        question_gen_status=orm.question_gen_status,
+        question_gen_error=orm.question_gen_error,
+        question_gen_task_id=orm.question_gen_task_id,
+        question_gen_config=orm.question_gen_config,
+        question_gen_message=orm.question_gen_message,
+        question_gen_saved_count=orm.question_gen_saved_count,
+        question_gen_skipped_count=orm.question_gen_skipped_count,
+        question_gen_updated_at=orm.question_gen_updated_at,
     )
 
 def _to_orm(entity: KnowledgeBaseEntity) -> KnowledgeBaseORM:
@@ -50,6 +59,14 @@ def _to_orm(entity: KnowledgeBaseEntity) -> KnowledgeBaseORM:
         vector_status=entity.vector_status,
         vector_error=entity.vector_error,
         chunk_count=entity.chunk_count,
+        question_gen_status=entity.question_gen_status,
+        question_gen_error=entity.question_gen_error,
+        question_gen_task_id=entity.question_gen_task_id,
+        question_gen_config=entity.question_gen_config,
+        question_gen_message=entity.question_gen_message,
+        question_gen_saved_count=entity.question_gen_saved_count,
+        question_gen_skipped_count=entity.question_gen_skipped_count,
+        question_gen_updated_at=entity.question_gen_updated_at,
     )
 
 class KnowledgeBaseRepository:
@@ -71,6 +88,13 @@ class KnowledgeBaseRepository:
         if orm_obj:
             return _to_entity(orm_obj)
         return None
+
+    async def find_by_id_for_update(self, db: AsyncSession, kb_id: int) -> Optional[KnowledgeBaseEntity]:
+        result = await db.execute(
+            select(KnowledgeBaseORM).where(KnowledgeBaseORM.id == kb_id).with_for_update()
+        )
+        orm_obj = result.scalar_one_or_none()
+        return _to_entity(orm_obj) if orm_obj else None
 
     async def find_by_file_hash(self, db: AsyncSession, file_hash: str) -> Optional[KnowledgeBaseEntity]:
         """根据文件哈希查找知识库（用于去重）"""
@@ -104,6 +128,14 @@ class KnowledgeBaseRepository:
             vector_status=entity.vector_status,
             vector_error=entity.vector_error,
             chunk_count=entity.chunk_count,
+            question_gen_status=entity.question_gen_status,
+            question_gen_error=entity.question_gen_error,
+            question_gen_task_id=entity.question_gen_task_id,
+            question_gen_config=entity.question_gen_config,
+            question_gen_message=entity.question_gen_message,
+            question_gen_saved_count=entity.question_gen_saved_count,
+            question_gen_skipped_count=entity.question_gen_skipped_count,
+            question_gen_updated_at=entity.question_gen_updated_at,
         )
 
         db.add(new_orm)
@@ -122,6 +154,30 @@ class KnowledgeBaseRepository:
             .values(vector_status=status, vector_error=error)
         )
         await db.execute(stmt)
+
+    async def update_question_generation_state(
+        self, db: AsyncSession, kb_id: int, **values: object
+    ) -> bool:
+        result = await db.execute(
+            update(KnowledgeBaseORM).where(KnowledgeBaseORM.id == kb_id).values(**values)
+        )
+        return bool(result.rowcount)
+
+    async def find_stale_question_generation_tasks(
+        self, db: AsyncSession, status: QuestionGenStatus, threshold: datetime
+    ) -> List[KnowledgeBaseEntity]:
+        result = await db.execute(
+            select(KnowledgeBaseORM)
+            .where(
+                KnowledgeBaseORM.question_gen_status == status,
+                or_(
+                    KnowledgeBaseORM.question_gen_updated_at.is_(None),
+                    KnowledgeBaseORM.question_gen_updated_at < threshold,
+                ),
+            )
+            .order_by(KnowledgeBaseORM.id)
+        )
+        return [_to_entity(item) for item in result.scalars().all()]
 
     async def update_category(self, db: AsyncSession, kb_id: int, category: str) -> None:
         stmt = update(KnowledgeBaseORM).where(KnowledgeBaseORM.id == kb_id).values(category=category)
@@ -254,5 +310,10 @@ class KnowledgeBaseRepository:
 
     async def delete_by_id(self, db: AsyncSession, kb_id: int) -> None:
         """删除知识库记录 / Delete knowledge base record"""
+        await db.execute(
+            delete(KnowledgeBaseQuestionORM).where(
+                KnowledgeBaseQuestionORM.knowledge_base_id == kb_id
+            )
+        )
         stmt = delete(KnowledgeBaseORM).where(KnowledgeBaseORM.id == kb_id)
         await db.execute(stmt)

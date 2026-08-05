@@ -48,3 +48,6 @@ class InterviewSessionEntity(BaseModel):
     completedAt: datetime | None = None
     evaluateStatus: AsyncTaskStatus = AsyncTaskStatus.PENDING
     evaluateError: str | None = None
+    sourceType: str = "NORMAL"
+    knowledgeBaseId: int | None = None
+    interviewCategory: str | None = None

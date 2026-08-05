@@ -5,6 +5,7 @@ from pydantic import Field
 
 from infrastructure.model.BaseCamelSchema import BaseCamelSchema
 from modules.knowledgebase.model.knowledgebase_entity import VectorStatus
+from modules.knowledgebase.model.knowledgebase_question import QuestionGenStatus
 
 
 class KnowledgeBaseListItemDTO(BaseCamelSchema):
@@ -23,6 +24,9 @@ class KnowledgeBaseListItemDTO(BaseCamelSchema):
     question_count: int = Field(default=0, alias="questionCount", description="提问次数 / Question count")
     vector_status: VectorStatus = Field(default=VectorStatus.PENDING, alias="vectorStatus", description="向量化状态 / Vectorization status")
     vector_error: Optional[str] = Field(default=None, alias="vectorError", description="向量化异常信息 / Vectorization error message")
+    chunk_count: int = Field(default=0, alias="chunkCount")
+    question_gen_status: QuestionGenStatus = Field(default=QuestionGenStatus.NONE, alias="questionGenStatus")
+    question_gen_error: Optional[str] = Field(default=None, alias="questionGenError")
 
 
 

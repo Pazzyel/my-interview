@@ -65,6 +65,8 @@ class InterviewSessionDTO(BaseCamelSchema):
     status: str
     evaluate_status: str | None = None
     evaluate_error: str | None = None
+    knowledge_base_id: int | None = None
+    interview_category: str | None = None
 
 
 class CurrentQuestionResponse(BaseCamelSchema):
@@ -130,6 +132,9 @@ class SessionListItemDTO(BaseCamelSchema):
     evaluate_status: str | None = None
     evaluate_error: str | None = None
     overall_score: int | None = None
+    source_type: str | None = None
+    knowledge_base_id: int | None = None
+    interview_category: str | None = None
     created_at: datetime
     completed_at: datetime | None = None
 

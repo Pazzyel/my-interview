@@ -23,8 +23,11 @@ from modules.interviewschedule.service.interview_schedule_service import Intervi
 from modules.interviewschedule.service.schedule_status_updater import ScheduleStatusUpdater
 from modules.knowledgebase.listener.vectorize_message_consumer import VectorizeMessageConsumer
 from modules.knowledgebase.listener.vectorize_message_producer import VectorizeMessageProducer
+from modules.knowledgebase.listener.question_generation_message_consumer import QuestionGenerationMessageConsumer
+from modules.knowledgebase.listener.question_generation_message_producer import QuestionGenerationMessageProducer
 # ────── Knowledge Base imports ──────
 from modules.knowledgebase.repository.knowledgebase_repository import KnowledgeBaseRepository
+from modules.knowledgebase.repository.knowledgebase_question_repository import KnowledgeBaseQuestionRepository
 from modules.knowledgebase.repository.rag_chat_repository import RagChatRepository
 from modules.knowledgebase.repository.rag_chat_session_repository import RagChatSessionRepository
 from modules.knowledgebase.service.knowledgebase_count_service import KnowledgeBaseCountService
@@ -38,6 +41,11 @@ from modules.knowledgebase.service.knowledgebase_vector_service import Knowledge
 from modules.knowledgebase.service.knowledgebase_vectorize_consumer_service import \
     KnowledgeBaseVectorizeConsumerService
 from modules.knowledgebase.service.rag_chat_session_service import RagChatSessionService
+from modules.knowledgebase.service.knowledgebase_interview_service import KnowledgeBaseInterviewService
+from modules.knowledgebase.service.knowledgebase_question_generation_service import KnowledgeBaseQuestionGenerationService
+from modules.knowledgebase.service.knowledgebase_question_service import KnowledgeBaseQuestionService
+from modules.knowledgebase.service.question_generation_recovery_service import QuestionGenerationRecoveryService
+from modules.knowledgebase.service.question_generation_state_service import QuestionGenerationStateService
 from modules.resume.listener.analyze_message_consumer import AnalyzeMessageConsumer
 from modules.resume.listener.analyze_message_producer import AnalyzeMessageProducer
 from modules.resume.repository.resume_repository import ResumeRepository
@@ -144,6 +152,7 @@ resume_delete_service = ResumeDeleteService(
 # ==================== Knowledge Base Module ====================
 
 knowledgebase_repository = KnowledgeBaseRepository()
+knowledgebase_question_repository = KnowledgeBaseQuestionRepository()
 rag_chat_repository = RagChatRepository()
 rag_chat_session_repository = RagChatSessionRepository()
 vector_service = ElasticsearchVectorService(registry=llm_provider_registry)
@@ -185,6 +194,40 @@ knowledgebase_query_service = KnowledgeBaseQueryService(
     llm_provider_registry,
 )
 rag_chat_session_service = RagChatSessionService(rag_chat_session_repository, knowledgebase_query_service)
+
+question_generation_state_service = QuestionGenerationStateService(
+    knowledgebase_repository, knowledgebase_question_repository
+)
+question_generation_message_producer = QuestionGenerationMessageProducer(
+    question_generation_state_service
+)
+knowledgebase_question_service = KnowledgeBaseQuestionService(
+    knowledgebase_repository,
+    knowledgebase_question_repository,
+    question_generation_state_service,
+    question_generation_message_producer,
+)
+knowledgebase_question_generation_service = KnowledgeBaseQuestionGenerationService(
+    knowledgebase_repository,
+    knowledgebase_question_repository,
+    knowledgebase_vector_service,
+    llm_provider_registry,
+    question_generation_state_service,
+)
+question_generation_message_consumer = QuestionGenerationMessageConsumer(
+    knowledgebase_question_generation_service,
+    question_generation_state_service,
+    question_generation_message_producer,
+)
+question_generation_recovery_service = QuestionGenerationRecoveryService(
+    async_session_factory,
+    knowledgebase_repository,
+    question_generation_state_service,
+    question_generation_message_producer,
+)
+knowledgebase_interview_service = KnowledgeBaseInterviewService(
+    knowledgebase_repository, knowledgebase_question_repository, interview_agent_service
+)
 
 # ==================== Voice Interview Module ====================
 

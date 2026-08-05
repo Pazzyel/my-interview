@@ -31,6 +31,9 @@ class InterviewRepository:
         skill_id: str = "java-backend",
         difficulty: str = "mid",
         llm_provider: str = "default",
+        source_type: str = "NORMAL",
+        knowledge_base_id: int | None = None,
+        interview_category: str | None = None,
     ) -> None:
         insert_data: dict[str, Any] = {
             "session_id": session_id,
@@ -43,6 +46,9 @@ class InterviewRepository:
             "current_question_index": 0,
             "status": "CREATED",
             "questions_json": questions_json,
+            "source_type": source_type,
+            "knowledge_base_id": knowledge_base_id,
+            "interview_category": interview_category,
         }
         await db.execute(insert(InterviewSessionORM).values(**insert_data))
 
@@ -248,6 +254,9 @@ class InterviewRepository:
             evaluate_status=item.evaluate_status.value if item.evaluate_status else None,
             evaluate_error=item.evaluate_error,
             overall_score=item.overall_score,
+            source_type=item.source_type,
+            knowledge_base_id=item.knowledge_base_id,
+            interview_category=item.interview_category,
             created_at=item.created_at,
             completed_at=item.completed_at,
         ) for item in result.scalars().all()]
@@ -358,6 +367,9 @@ class InterviewRepository:
             evaluateStatus=session_orm.evaluate_status,
             evaluateError=session_orm.evaluate_error,
             overallScore=session_orm.overall_score,
+            sourceType=session_orm.source_type,
+            knowledgeBaseId=session_orm.knowledge_base_id,
+            interviewCategory=session_orm.interview_category,
             overallFeedback=session_orm.overall_feedback,
             createdAt=session_orm.created_at,
             completedAt=session_orm.completed_at,
@@ -430,6 +442,9 @@ class InterviewRepository:
                 llmProvider=item.llmProvider,
                 status=item.status.value,
                 overallScore=item.overallScore,
+                sourceType=item.sourceType,
+                knowledgeBaseId=item.knowledgeBaseId,
+                interviewCategory=item.interviewCategory,
                 createdAt=item.createdAt,
                 completedAt=item.completedAt,
             )
@@ -462,6 +477,9 @@ class InterviewRepository:
             completedAt=orm_obj.completed_at,
             evaluateStatus=orm_obj.evaluate_status,
             evaluateError=orm_obj.evaluate_error,
+            sourceType=orm_obj.source_type,
+            knowledgeBaseId=orm_obj.knowledge_base_id,
+            interviewCategory=orm_obj.interview_category,
         )
 
     def _to_answer_detail_dto(self, orm_obj: InterviewAnswerORM) -> InterviewAnswerDetailDTO:

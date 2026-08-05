@@ -23,11 +23,15 @@ from common.dependencies import (
     voice_evaluation_recovery_service,
     voice_runtime_manager,
     schedule_status_updater,
+    question_generation_message_producer,
+    question_generation_message_consumer,
+    question_generation_recovery_service,
 )
 from common.exceptions import BusinessException
 from modules.interview.router import interview_router
 from modules.interview.router import interview_skill_router
 from modules.knowledgebase.router import knowledgebase_router, rag_chat_router
+from modules.knowledgebase.router import knowledgebase_interview_router
 from modules.resume.router import resume_router
 from modules.llmprovider.router import llm_provider_router
 from modules.voiceinterview.router import rest_router as voice_interview_router
@@ -49,12 +53,14 @@ async def lifespan(app: FastAPI):
             vectorize_message_producer,
             evaluate_message_producer,
             voice_evaluate_message_producer,
+            question_generation_message_producer,
         ]
         consumers = [
             analyze_message_consumer,
             vectorize_message_consumer,
             evaluate_message_consumer,
             voice_evaluate_message_consumer,
+            question_generation_message_consumer,
         ]
         try:
             await asyncio.gather(*(asyncio.to_thread(item.start) for item in producers))
@@ -62,9 +68,11 @@ async def lifespan(app: FastAPI):
                 await consumer.start()
             await voice_evaluation_recovery_service.start()
             await schedule_status_updater.start()
+            await question_generation_recovery_service.start()
             logging.info("LangGraph Checkpointer 与语音面试任务已就绪")
             yield
         finally:
+            await question_generation_recovery_service.shutdown()
             await schedule_status_updater.shutdown()
             await voice_runtime_manager.close_all()
             await voice_evaluation_recovery_service.shutdown()
@@ -81,6 +89,7 @@ app = FastAPI(title="Resume Analysis Service Migration", version="1.0", lifespan
 app.include_router(resume_router.router)
 app.include_router(knowledgebase_router.router)
 app.include_router(rag_chat_router.router)
+app.include_router(knowledgebase_interview_router.router)
 app.include_router(interview_router.router)
 app.include_router(interview_skill_router.router)
 app.include_router(llm_provider_router.router)

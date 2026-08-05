@@ -106,6 +106,43 @@ class InterviewAgentService:
     async def list_sessions(self, db: AsyncSession) -> list[SessionListItemDTO]:
         return await self.interview_repository.list_sessions(db)
 
+    async def create_session_from_questions(
+        self,
+        db: AsyncSession,
+        questions: list[InterviewQuestionDTO],
+        llm_provider: str | None,
+        skill_id: str,
+        difficulty: str,
+        knowledge_base_id: int,
+        interview_category: str | None,
+    ) -> InterviewSessionDTO:
+        session_id = uuid.uuid4().hex[:16]
+        provider = llm_provider.strip() if llm_provider and llm_provider.strip() else "default"
+        await self.interview_repository.create_session(
+            db=db,
+            session_id=session_id,
+            resume_id=None,
+            total_questions=len(questions),
+            questions_json=self._serialize_questions(questions),
+            skill_id=skill_id,
+            difficulty=difficulty,
+            llm_provider=provider,
+            source_type="KNOWLEDGE_BASE",
+            knowledge_base_id=knowledge_base_id,
+            interview_category=interview_category,
+        )
+        return InterviewSessionDTO(
+            session_id=session_id,
+            resume_text="",
+            total_questions=len(questions),
+            current_question_index=0,
+            questions=questions,
+            status=SessionStatus.CREATED.value,
+            evaluate_status=AsyncTaskStatus.PENDING.value,
+            knowledge_base_id=knowledge_base_id,
+            interview_category=interview_category,
+        )
+
     async def get_session(self, db: AsyncSession, session_id: str) -> InterviewSessionDTO:
         entity = await self.interview_repository.find_by_session_id(db, session_id)
         if entity is None:
@@ -236,6 +273,8 @@ class InterviewAgentService:
             status=entity.status.value,
             evaluate_status=entity.evaluateStatus.value if entity.evaluateStatus else None,
             evaluate_error=entity.evaluateError,
+            knowledge_base_id=entity.knowledgeBaseId,
+            interview_category=entity.interviewCategory,
         )
 
     @staticmethod

@@ -4,6 +4,8 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+from modules.knowledgebase.model.knowledgebase_question import QuestionGenStatus
+
 
 class VectorStatus(str, Enum):
     """知识库向量化状态"""
@@ -35,6 +37,14 @@ class KnowledgeBaseEntity(BaseModel):
     vector_status: VectorStatus = VectorStatus.PENDING
     vector_error: Optional[str] = None
     chunk_count: int = 0
+    question_gen_status: QuestionGenStatus = QuestionGenStatus.NONE
+    question_gen_error: Optional[str] = None
+    question_gen_task_id: Optional[str] = None
+    question_gen_config: Optional[str] = None
+    question_gen_message: Optional[str] = None
+    question_gen_saved_count: int = 0
+    question_gen_skipped_count: int = 0
+    question_gen_updated_at: Optional[datetime] = None
 
     def increment_access_count(self) -> None:
         """更新访问计数和最后访问时间"""
