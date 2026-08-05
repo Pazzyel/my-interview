@@ -17,6 +17,10 @@ from modules.llmprovider.repository.llm_provider_repository import LlmProviderRe
 from modules.llmprovider.service.api_key_encryption_service import ApiKeyEncryptionService
 from modules.llmprovider.service.llm_provider_registry import LlmProviderRegistry
 from modules.llmprovider.service.llm_provider_service import LlmProviderService
+from modules.interviewschedule.repository.interview_schedule_repository import InterviewScheduleRepository
+from modules.interviewschedule.service.interview_parse_service import InterviewParseService
+from modules.interviewschedule.service.interview_schedule_service import InterviewScheduleService
+from modules.interviewschedule.service.schedule_status_updater import ScheduleStatusUpdater
 from modules.knowledgebase.listener.vectorize_message_consumer import VectorizeMessageConsumer
 from modules.knowledgebase.listener.vectorize_message_producer import VectorizeMessageProducer
 # ────── Knowledge Base imports ──────
@@ -84,6 +88,16 @@ llm_provider_service = LlmProviderService(
     llm_provider_repository,
     api_key_encryption_service,
     llm_provider_registry,
+)
+
+# ==================== Interview Schedule Module ====================
+
+interview_schedule_repository = InterviewScheduleRepository()
+interview_schedule_service = InterviewScheduleService(interview_schedule_repository)
+interview_parse_service = InterviewParseService(llm_provider_registry)
+schedule_status_updater = ScheduleStatusUpdater(
+    async_session_factory,
+    interview_schedule_repository,
 )
 
 # ==================== Resume Module ====================
