@@ -6,6 +6,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from common.models import AsyncTaskStatus
 from modules.knowledgebase.model.knowledgebase_entity import VectorStatus
+from modules.interviewschedule.model import InterviewStatus, InterviewType
 
 
 class Base(DeclarativeBase):
@@ -41,6 +42,35 @@ class LlmGlobalSettingORM(Base):
     )
     default_embedding_provider_id: Mapped[str] = mapped_column(
         String(64), ForeignKey("llm_provider_config.id"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, onupdate=datetime.now, nullable=False
+    )
+
+
+class InterviewScheduleORM(Base):
+    __tablename__ = "interview_schedule"
+    __table_args__ = (
+        Index("ix_interview_schedule_time", "interview_time"),
+        Index("ix_interview_schedule_status_time", "status", "interview_time"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    company_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    position: Mapped[str] = mapped_column(String(255), nullable=False)
+    interview_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    interview_type: Mapped[InterviewType | None] = mapped_column(
+        SQLEnum(InterviewType, name="interview_schedule_type", create_type=False), nullable=True
+    )
+    meeting_link: Mapped[str | None] = mapped_column(Text, nullable=True)
+    round_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    interviewer: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[InterviewStatus] = mapped_column(
+        SQLEnum(InterviewStatus, name="interview_schedule_status", create_type=False),
+        default=InterviewStatus.PENDING,
+        nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

@@ -22,6 +22,7 @@ from common.dependencies import (
     voice_evaluate_message_consumer,
     voice_evaluation_recovery_service,
     voice_runtime_manager,
+    schedule_status_updater,
 )
 from common.exceptions import BusinessException
 from modules.interview.router import interview_router
@@ -31,6 +32,7 @@ from modules.resume.router import resume_router
 from modules.llmprovider.router import llm_provider_router
 from modules.voiceinterview.router import rest_router as voice_interview_router
 from modules.voiceinterview.router import websocket_router as voice_interview_websocket_router
+from modules.interviewschedule.router import interview_schedule_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -59,9 +61,11 @@ async def lifespan(app: FastAPI):
             for consumer in consumers:
                 await consumer.start()
             await voice_evaluation_recovery_service.start()
+            await schedule_status_updater.start()
             logging.info("LangGraph Checkpointer 与语音面试任务已就绪")
             yield
         finally:
+            await schedule_status_updater.shutdown()
             await voice_runtime_manager.close_all()
             await voice_evaluation_recovery_service.shutdown()
             for consumer in reversed(consumers):
@@ -82,6 +86,7 @@ app.include_router(interview_skill_router.router)
 app.include_router(llm_provider_router.router)
 app.include_router(voice_interview_router.router)
 app.include_router(voice_interview_websocket_router.router)
+app.include_router(interview_schedule_router.router)
 
 @app.exception_handler(BusinessException)
 async def business_exception_handler(request: Request, exc: BusinessException):
