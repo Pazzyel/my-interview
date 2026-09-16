@@ -1,6 +1,7 @@
 import logging
 import unicodedata
 
+from common.config import app_config
 from common.exceptions import BusinessException, ErrorCode
 from common.llm_provider import LlmProviderResolver
 from common.prompt_security import DATA_BOUNDARY_INSTRUCTION, sanitize_prompt_data, wrap_prompt_data
@@ -117,7 +118,7 @@ class KnowledgeBaseQuestionGenerationService:
                 query=query,
                 knowledgebase_ids=[knowledge_base_id],
                 top_k=self.RETRIEVAL_QUERY_TOP_K,
-                min_score=0,
+                min_score=app_config.kb_min_score_short,
             )
             for doc in docs:
                 value = (doc.page_content or "").strip()
