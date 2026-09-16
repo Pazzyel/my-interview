@@ -13,13 +13,14 @@ docker compose ps
 
 服务就绪后：
 
+- 前端：`http://localhost`（通过 `FRONTEND_PORT` 修改宿主机端口）
 - 后端 API：`http://localhost:8072`
 - OpenAPI 文档：`http://localhost:8072/docs`
 - 健康检查：`http://localhost:8072/health`
 - RustFS 控制台：`http://localhost:9001`
 - Elasticsearch：`http://localhost:9200`
 
-仓库不包含前端镜像。前端将 API Base URL 指向 `http://localhost:8072`，WebSocket 使用后端返回的地址即可。默认允许 `localhost:5173` 和 `127.0.0.1:5173` 跨域访问；其他前端域名通过 `CORS_ORIGINS` 配置。
+Compose 会构建 `frontend/` 中的前端镜像。浏览器以同源方式访问 `/api` 和 `/ws`，前端 Nginx 在 Docker 网络内将请求转发到 `backend:8072`。本地运行 Vite 时，开发代理默认连接 `http://localhost:8072`，可通过 `VITE_API_PROXY_TARGET` 覆盖。
 
 如需自定义端口、密码或第三方模型服务：
 
@@ -34,14 +35,18 @@ Linux/macOS 使用 `cp .env.example .env`。`.env` 已被 Git 忽略，请勿提
 
 | 服务 | Compose 版本 | 容器内地址 | 宿主机默认地址 |
 | --- | --- | --- | --- |
+| Frontend | Node.js 20 + Nginx | `frontend:80` | `http://localhost` |
 | Backend | Python 3.13 | - | `http://localhost:8072` |
 | MySQL | 8.4.10 | `mysql:3306` | `localhost:3308` |
 | Elasticsearch | 8.19.17 | `elasticsearch:9200` | `localhost:9200` |
-| RocketMQ Broker + Proxy | 5.3.4 | `rocketmq-broker:8081` | `localhost:8081` |
+| RocketMQ Proxy | 5.3.4 | `rocketmq-proxy:8081` | `localhost:8081` |
+| RocketMQ Broker | 5.3.4 | `rocketmq-broker:10911` | `localhost:10911` |
 | RocketMQ NameServer | 5.3.4 | `rocketmq-nameserver:9876` | `localhost:9876` |
 | RustFS | 1.0.0-beta.11 | `rustfs:9000` | `localhost:9000` |
 
-RocketMQ Python 客户端为 `rocketmq-python-client==5.1.1`，它使用 RocketMQ 5.x Proxy 的 gRPC 端口 `8081`，不是旧客户端直连 NameServer 的方式。
+RocketMQ Python 客户端为 `rocketmq-python-client==5.1.1`，它使用 RocketMQ 5.x Proxy 的 gRPC 端口 `8081`，不是旧客户端直连 NameServer 的方式。NameServer、Broker 和 Proxy 分别运行；Proxy 使用 Cluster 模式，并在 Broker 健康后启动。
+
+全部服务都显式加入 `${COMPOSE_NETWORK_NAME:-interview-network}` bridge 网络。Broker 不再向 NameServer 注册 `127.0.0.1`，避免独立 Proxy 把 Broker 地址错误解析为自己的回环地址。
 
 Elasticsearch 以单节点开发模式运行并关闭了认证，仅适合本机或受信网络。RustFS 当前仍为 beta 版本；生产环境应评估多副本、TLS、备份和密钥管理。
 
@@ -65,7 +70,7 @@ Compose 已把基础设施地址配置为 Docker 网络内的服务名：
 | --- | --- | --- |
 | `DATABASE_URL` | `mysql+aiomysql://...@mysql:3306/interview` | 业务数据库 |
 | `DB_URI` | `mysql+aiomysql://...@mysql:3306/checkpointer` | LangGraph checkpoint 数据库 |
-| `ROCKETMQ_ENDPOINTS` | `rocketmq-broker:8081` | RocketMQ 5.x Proxy gRPC 地址 |
+| `ROCKETMQ_ENDPOINTS` | `rocketmq-proxy:8081` | RocketMQ 5.x Proxy gRPC 地址 |
 | `ELASTICSEARCH_URL` | `http://elasticsearch:9200` | 向量检索服务 |
 | `RUSTFS_ENDPOINT_URL` | `http://rustfs:9000` | S3-compatible 对象存储 |
 
@@ -114,6 +119,7 @@ python -m pytest -q --basetemp=.pytest-tmp -p no:cacheprovider
 
 ```bash
 docker compose logs -f backend
+docker compose logs -f rocketmq-proxy
 docker compose ps
 docker compose restart backend
 docker compose down

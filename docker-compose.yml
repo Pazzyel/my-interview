@@ -20,6 +20,8 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
+    networks:
+      - interview-network
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.19.17
@@ -39,6 +41,8 @@ services:
       timeout: 6s
       retries: 18
       start_period: 45s
+    networks:
+      - interview-network
 
   rocketmq-nameserver:
     image: apache/rocketmq:5.3.4
@@ -59,13 +63,13 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
+    networks:
+      - interview-network
 
   rocketmq-broker:
     image: apache/rocketmq:5.3.4
     restart: unless-stopped
-    command: >-
-      sh mqbroker --enable-proxy
-      -c /home/rocketmq/rocketmq-5.3.4/conf/broker.conf
+    command: sh mqbroker -c /home/rocketmq/rocketmq-5.3.4/conf/broker.conf
     environment:
       NAMESRV_ADDR: rocketmq-nameserver:9876
       JAVA_OPT_EXT: -server -Xms512m -Xmx512m -Xmn256m
@@ -76,18 +80,47 @@ services:
         condition: service_healthy
     ports:
       - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${ROCKETMQ_BROKER_PORT:-10911}:10911"
-      - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${ROCKETMQ_PROXY_HTTP_PORT:-8080}:8080"
-      - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${ROCKETMQ_PROXY_GRPC_PORT:-8081}:8081"
     volumes:
       - ./deploy/rocketmq/broker.conf:/home/rocketmq/rocketmq-5.3.4/conf/broker.conf:ro
       - rocketmq-broker-logs:/home/rocketmq/logs
       - rocketmq-broker-store:/home/rocketmq/store
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/10911'"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 45s
+    networks:
+      - interview-network
+
+  rocketmq-proxy:
+    image: apache/rocketmq:5.3.4
+    restart: unless-stopped
+    command: sh mqproxy -pc /home/rocketmq/rocketmq-5.3.4/conf/rmq-proxy.json
+    environment:
+      NAMESRV_ADDR: rocketmq-nameserver:9876
+      JAVA_OPT_EXT: -server -Xms256m -Xmx256m -Xmn128m
+    depends_on:
+      rocketmq-permissions:
+        condition: service_completed_successfully
+      rocketmq-nameserver:
+        condition: service_healthy
+      rocketmq-broker:
+        condition: service_healthy
+    ports:
+      - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${ROCKETMQ_PROXY_HTTP_PORT:-8080}:8080"
+      - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${ROCKETMQ_PROXY_GRPC_PORT:-8081}:8081"
+    volumes:
+      - ./deploy/rocketmq/proxy.json:/home/rocketmq/rocketmq-5.3.4/conf/rmq-proxy.json:ro
+      - rocketmq-proxy-logs:/home/rocketmq/logs
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8081'"]
       interval: 10s
       timeout: 5s
       retries: 18
       start_period: 45s
+    networks:
+      - interview-network
 
   rocketmq-permissions:
     image: alpine:3.22
@@ -98,11 +131,15 @@ services:
       - -c
       - >-
         mkdir -p /nameserver-logs/rocketmqlogs /broker-logs/rocketmqlogs /broker-store
-        && chown -R 3000:3000 /nameserver-logs /broker-logs /broker-store
+        /proxy-logs/rocketmqlogs
+        && chown -R 3000:3000 /nameserver-logs /broker-logs /broker-store /proxy-logs
     volumes:
       - rocketmq-nameserver-logs:/nameserver-logs
       - rocketmq-broker-logs:/broker-logs
       - rocketmq-broker-store:/broker-store
+      - rocketmq-proxy-logs:/proxy-logs
+    networks:
+      - interview-network
 
   rustfs-permissions:
     image: alpine:3.22
@@ -111,6 +148,8 @@ services:
     command: chown -R 10001:10001 /data
     volumes:
       - rustfs-data:/data
+    networks:
+      - interview-network
 
   rustfs:
     image: rustfs/rustfs:1.0.0-beta.11
@@ -128,6 +167,8 @@ services:
       - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${RUSTFS_CONSOLE_PORT:-9001}:9001"
     volumes:
       - rustfs-data:/data
+    networks:
+      - interview-network
 
   backend:
     build:
@@ -137,7 +178,7 @@ services:
     environment:
       DATABASE_URL: mysql+aiomysql://root:${MYSQL_ROOT_PASSWORD:-interview_dev_password}@mysql:3306/interview
       DB_URI: mysql+aiomysql://root:${MYSQL_ROOT_PASSWORD:-interview_dev_password}@mysql:3306/checkpointer
-      ROCKETMQ_ENDPOINTS: rocketmq-broker:8081
+      ROCKETMQ_ENDPOINTS: rocketmq-proxy:8081
       RUSTFS_ENDPOINT_URL: http://rustfs:9000
       RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-rustfsadmin}
       RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-rustfsadmin_dev_secret}
@@ -160,13 +201,28 @@ services:
         condition: service_healthy
       elasticsearch:
         condition: service_healthy
-      rocketmq-broker:
+      rocketmq-proxy:
         condition: service_healthy
       rustfs:
         condition: service_started
     ports:
       - "${BACKEND_BIND_ADDRESS:-0.0.0.0}:${BACKEND_PORT:-8072}:8072"
     stop_grace_period: 30s
+    networks:
+      - interview-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_BIND_ADDRESS:-0.0.0.0}:${FRONTEND_PORT:-80}:80"
+    networks:
+      - interview-network
 
 volumes:
   mysql-data:
@@ -174,4 +230,10 @@ volumes:
   rocketmq-nameserver-logs:
   rocketmq-broker-logs:
   rocketmq-broker-store:
+  rocketmq-proxy-logs:
   rustfs-data:
+
+networks:
+  interview-network:
+    name: ${COMPOSE_NETWORK_NAME:-interview-network}
+    driver: bridge
