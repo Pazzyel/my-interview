@@ -33,7 +33,7 @@ class KnowledgeBaseVectorizeConsumerService:
         Process one knowledgebase vectorization task with status transition and vector storage.
 
         执行步骤 / Execution Steps:
-        1) 检查知识库是否存在，不存在则直接跳过。
+        1) 检查知识库是否存在，不存在则抛错交由消费层重试。
         2) 标记状态为 PROCESSING，清空错误信息。
         3) 调用向量服务执行分块、嵌入与存储。
         4) 标记状态为 COMPLETED。
@@ -47,9 +47,7 @@ class KnowledgeBaseVectorizeConsumerService:
             try:
                 kb_entity: Optional[KnowledgeBaseEntity] = await self._knowledgebase_repository.find_by_id(db, kb_id)
                 if kb_entity is None:
-                    logger.warning("Knowledge base does not exist, skip vectorize task: kbId=%s", kb_id)
-                    await db.commit()
-                    return
+                    raise RuntimeError(f"Knowledge base is not visible to consumer: kbId={kb_id}")
 
                 await self._knowledgebase_repository.update_vector_status(db, kb_id, VectorStatus.PROCESSING, None)
                 await db.commit()

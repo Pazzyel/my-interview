@@ -3,17 +3,22 @@ FROM python:3.13-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
+    NLTK_DATA=/usr/local/share/nltk_data \
     PYTHONPATH=/app/src
 
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends libmagic1 \
+    && apt-get install --yes --no-install-recommends \
+        libmagic1 \
+        libreoffice-writer \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./requirements.txt
 RUN python -m pip install --upgrade pip \
-    && python -m pip install --requirement requirements.txt
+    && python -m pip install --requirement requirements.txt \
+    && python -m nltk.downloader -d "$NLTK_DATA" \
+        punkt_tab averaged_perceptron_tagger_eng
 
 COPY resources ./resources
 COPY src ./src
