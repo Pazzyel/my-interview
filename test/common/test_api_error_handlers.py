@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.testclient import TestClient
@@ -35,12 +37,15 @@ def create_client() -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
 
 
-def test_business_errors_use_http_200_result_contract() -> None:
-    with create_client() as client:
-        response = client.get("/business-error")
+def test_business_errors_use_http_200_result_contract(caplog) -> None:
+    with caplog.at_level(logging.INFO, logger="common.api_error_handlers"):
+        with create_client() as client:
+            response = client.get("/business-error")
 
     assert response.status_code == 200
     assert response.json() == {"code": 2001, "message": "简历不存在", "data": None}
+    record = next(record for record in caplog.records if "Business error" in record.message)
+    assert record.levelno == logging.INFO
 
 
 def test_validation_and_missing_routes_use_result_contract() -> None:

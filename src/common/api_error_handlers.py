@@ -28,6 +28,15 @@ ERROR_CODES: dict[ErrorCode, int] = {
     ErrorCode.LLM_PROVIDER_NOT_FOUND: 11001,
 }
 
+NOT_FOUND_ERROR_CODES = {
+    ErrorCode.RESUME_NOT_FOUND,
+    ErrorCode.RESUME_ANALYSIS_NOT_FOUND,
+    ErrorCode.INTERVIEW_SESSION_NOT_FOUND,
+    ErrorCode.INTERVIEW_QUESTION_NOT_FOUND,
+    ErrorCode.KB_NOT_FOUND,
+    ErrorCode.LLM_PROVIDER_NOT_FOUND,
+}
+
 
 def _error_response(code: int, message: str) -> JSONResponse:
     return JSONResponse(
@@ -39,7 +48,8 @@ def _error_response(code: int, message: str) -> JSONResponse:
 async def business_exception_handler(
     request: Request, exc: BusinessException
 ) -> JSONResponse:
-    logger.warning(
+    log = logger.info if exc.code in NOT_FOUND_ERROR_CODES else logger.warning
+    log(
         "Business error: path=%s code=%s message=%s",
         request.url.path,
         exc.code,

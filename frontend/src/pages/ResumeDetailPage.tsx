@@ -2,6 +2,7 @@ import {useCallback, useEffect, useState} from 'react';
 import {useLocation} from 'react-router-dom';
 import {AnimatePresence, motion} from 'framer-motion';
 import {historyApi, InterviewDetail, ResumeDetail} from '../api/history';
+import {ApiError} from '../api/request';
 import AnalysisPanel from '../components/AnalysisPanel';
 import InterviewPanel from '../components/InterviewPanel';
 import InterviewDetailPanel from '../components/InterviewDetailPanel';
@@ -16,6 +17,7 @@ interface ResumeDetailPageProps {
 
 type TabType = 'analysis' | 'interview';
 type DetailViewType = 'list' | 'interviewDetail';
+const RESUME_NOT_FOUND_CODE = 2001;
 
 export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }: ResumeDetailPageProps) {
   const location = useLocation();
@@ -28,28 +30,43 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
   const [selectedInterview, setSelectedInterview] = useState<InterviewDetail | null>(null);
   const [loadingInterview, setLoadingInterview] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
+  const [notFound, setNotFound] = useState(false);
+
+  const handleLoadError = useCallback((error: unknown) => {
+    if (error instanceof ApiError && error.code === RESUME_NOT_FOUND_CODE) {
+      // The resume may be deleted from the history page or another browser tab
+      // while this page is polling. Clear the stale processing state so the
+      // polling effect tears down instead of requesting the deleted ID forever.
+      setResume(null);
+      setNotFound(true);
+      return;
+    }
+    console.error('加载简历详情失败', error);
+  }, []);
 
   // 静默加载数据（用于轮询）
   const loadResumeDetailSilent = useCallback(async () => {
     try {
       const data = await historyApi.getResumeDetail(resumeId);
       setResume(data);
+      setNotFound(false);
     } catch (err) {
-      console.error('加载简历详情失败', err);
+      handleLoadError(err);
     }
-  }, [resumeId]);
+  }, [resumeId, handleLoadError]);
 
   const loadResumeDetail = useCallback(async () => {
     setLoading(true);
     try {
       const data = await historyApi.getResumeDetail(resumeId);
       setResume(data);
+      setNotFound(false);
     } catch (err) {
-      console.error('加载简历详情失败', err);
+      handleLoadError(err);
     } finally {
       setLoading(false);
     }
-  }, [resumeId]);
+  }, [resumeId, handleLoadError]);
 
   useEffect(() => {
     loadResumeDetail();
@@ -213,7 +230,9 @@ export default function ResumeDetailPage({ resumeId, onBack, onStartInterview }:
   if (!resume) {
     return (
       <div className="text-center py-20">
-        <p className="text-red-500 mb-4">加载失败，请返回重试</p>
+        <p className="text-red-500 mb-4">
+          {notFound ? '该简历已被删除' : '加载失败，请返回重试'}
+        </p>
         <button onClick={onBack} className="px-6 py-2 bg-primary-500 text-white rounded-lg">返回列表</button>
       </div>
     );

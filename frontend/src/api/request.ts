@@ -15,6 +15,16 @@ export interface Result<T = unknown> {
   data: T;
 }
 
+export class ApiError extends Error {
+  constructor(
+    public readonly code: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 const SUCCESS_CODE = 200;
 const RESULT_BLOB_PARSE_LIMIT = 64 * 1024;
 
@@ -39,7 +49,7 @@ export function getResultError(value: unknown): Error | null {
   if (!isResult(value) || value.code === SUCCESS_CODE) {
     return null;
   }
-  return new Error(value.message || '请求失败');
+  return new ApiError(value.code, value.message || '请求失败');
 }
 
 function parseResultText(text: string): Result | null {
@@ -100,7 +110,7 @@ async function getErrorFromResponseData(data: unknown): Promise<Error | null> {
     return null;
   }
 
-  return new Error(result.message || '请求失败');
+  return new ApiError(result.code, result.message || '请求失败');
 }
 
 /**
@@ -126,7 +136,7 @@ instance.interceptors.response.use(
         return response;
       }
       // 失败：直接抛出 message
-      return Promise.reject(new Error(result.message || '请求失败'));
+      return Promise.reject(new ApiError(result.code, result.message || '请求失败'));
     }
 
     // 非 Result 格式，直接返回
