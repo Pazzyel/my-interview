@@ -90,10 +90,15 @@ class ResumeUploadService:
         
         saved_resume = await self.resume_repository.save(db, new_resume)
 
-        # 发送文本AI分析异步任务到MQ
-        # Publish Task
         if not saved_resume.id:
             raise BusinessException(ErrorCode.VALIDATION_ERROR, "查找出的简历文件没有id") 
+
+        # Commit before publishing so an immediately scheduled consumer can
+        # observe the resume record from its independent database session.
+        await db.commit()
+
+        # 发送文本AI分析异步任务到MQ
+        # Publish Task
         self.analyze_stream_producer.send_analyze_task(saved_resume.id, resume_text)
 
         logger.info(f"Resume upload completed, analysis task queued for resumeId={saved_resume.id}")
@@ -158,4 +163,5 @@ class ResumeUploadService:
             raise BusinessException(ErrorCode.RESUME_PARSE_FAILED, "简历文本为空，无法重分析")
 
         await self.resume_repository.update_analyze_status(db, resume_id, AsyncTaskStatus.PENDING, None)
+        await db.commit()
         self.analyze_stream_producer.send_analyze_task(resume_id, resume.resumeText)

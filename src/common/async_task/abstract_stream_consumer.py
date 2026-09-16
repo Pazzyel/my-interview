@@ -45,11 +45,26 @@ class AbstractStreamConsumer(ABC, Generic[T]):
 
         self._main_loop = asyncio.get_running_loop()
         from rocketmq import ClientConfiguration, Credentials, FilterExpression, PushConsumer
+        from rocketmq.v5.consumer.consumer import Consumer
+
+        class CompatiblePushConsumer(PushConsumer):
+            """Work around rocketmq-python-client 5.1.1 disabled-metrics bug.
+
+            The SDK registers process-queue gauges even when the Proxy returns
+            ``metric.on = false``. In that case its meter provider is ``None``
+            and the telemetry stream crashes before queue assignments arrive.
+            """
+
+            def reset_metric(self, metric: Any) -> None:
+                if metric.on:
+                    super().reset_metric(metric)
+                    return
+                Consumer.reset_metric(self, metric)
 
         config = ClientConfiguration(app_config.rocketmq_endpoints, Credentials())
         listener = _CallbackMessageListener(self._on_message)
         subscription = {self.topic(): FilterExpression(self.tag() or "*")}
-        consumer = PushConsumer(
+        consumer = CompatiblePushConsumer(
             client_configuration=config,
             consumer_group=self.consumer_group(),
             message_listener=listener,

@@ -26,7 +26,7 @@ class ResumeAnalyzeConsumerService:
         Process one resume analysis task with full status transition and persistence.
 
         执行步骤 / Execution Steps:
-        1) 检查简历是否存在，不存在则直接跳过。
+        1) 检查简历是否存在，不存在则抛错交由消费层重试。
         2) 标记状态为 PROCESSING，清空错误信息。
         3) 调用评分服务生成结构化分析结果。
         4) 写入 resume_analyses 历史记录。
@@ -41,9 +41,7 @@ class ResumeAnalyzeConsumerService:
             try:
                 exists: bool = await self._resume_repository.exists_by_id(db, resume_id)
                 if not exists:
-                    logger.warning("Resume does not exist, skip analyze task: resumeId=%s", resume_id)
-                    await db.commit()
-                    return
+                    raise RuntimeError(f"Resume is not visible to consumer: resumeId={resume_id}")
 
                 await self._resume_repository.update_analyze_status(db, resume_id, AsyncTaskStatus.PROCESSING, None)
                 await db.commit()

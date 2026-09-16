@@ -65,6 +65,7 @@ def _install_knowledgebase_service_stubs() -> None:
     if "infrastructure.file.document_parse_service" not in sys.modules:
         dp_stub = types.ModuleType("infrastructure.file.document_parse_service")
         dp_stub.DocumentParseService = type("DocumentParseService", (), {})
+        dp_stub.DocumentParseError = type("DocumentParseError", (RuntimeError,), {})
         sys.modules["infrastructure.file.document_parse_service"] = dp_stub
 
     # database connection

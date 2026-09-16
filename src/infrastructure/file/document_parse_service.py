@@ -4,14 +4,26 @@ from io import BytesIO
 import logging
 
 from fastapi import UploadFile
+from pypdf import PdfReader
 from unstructured.partition.auto import partition
 
 from common.config import app_config
 
 logger = logging.getLogger(__name__)
 
-# 解析函数的lambda包装函数，这里我们指定模式为fast
+
+class DocumentParseError(RuntimeError):
+    """Raised when a document cannot be converted to usable text."""
+
+
 def parse_func(file_bytes: BytesIO, file__name: str):
+    # unstructured's PDF partitioner imports the full local-inference stack
+    # even for the fast strategy. Text resumes only need pypdf, which is
+    # already a direct project dependency and keeps the runtime image small.
+    if file__name.lower().endswith(".pdf"):
+        reader = PdfReader(file_bytes)
+        return [text for page in reader.pages if (text := page.extract_text())]
+
     return partition(metadata_filename=file__name, file=file_bytes, strategy="fast")
 
 
@@ -46,12 +58,15 @@ class DocumentParseService:
             return text_content
 
         except asyncio.TimeoutError:
-            logger.warning(f"Parsing document {file_name} timed out after {app_config.MAX_PARSE_TIME} seconds.")
-            return "解析超时，文件可能过大或结构过于复杂。"
+            message = f"Parsing document {file_name} timed out after {app_config.MAX_PARSE_TIME} seconds"
+            logger.warning(message)
+            raise DocumentParseError(message)
         except Exception as e:
-            # Fallback if parsing fails
-            logger.error(f"Error parsing document {file_name}: {str(e)}")
-            return f"Error parsing content for {file_name}: {str(e)}"
+            message = f"Error parsing document {file_name}: {str(e)}"
+            logger.error(message, exc_info=True)
+            raise DocumentParseError(message) from e
+        finally:
+            process_executor.shutdown(wait=False, cancel_futures=True)
 
     def detect_content_type(self, file: UploadFile) -> str:
         return file.content_type or "application/octet-stream"
