@@ -36,6 +36,7 @@ from common.dependencies import (
     question_generation_recovery_service,
 )
 from common.exceptions import BusinessException
+from infrastructure.database.checkpointer_schema import normalize_checkpointer_collation
 from modules.interview.router import interview_router
 from modules.interview.router import interview_skill_router
 from modules.knowledgebase.router import knowledgebase_router, rag_chat_router
@@ -54,6 +55,7 @@ async def lifespan(app: FastAPI):
     await voice_provider_config_service.initialize()
     async with AIOMySQLSaver.from_conn_string(app_config.db_uri) as checkpointer:
         await checkpointer.setup()
+        await normalize_checkpointer_collation(checkpointer)
         await knowledgebase_query_service.build_graph(checkpointer)
         await interview_agent_service.build_graph(checkpointer)
         producers = [

@@ -48,6 +48,10 @@ class RagChatSessionService:
             title,
             knowledge_base_ids,
         )
+        # The frontend starts the streaming request as soon as it receives this
+        # ID. Make the new session visible to that independent DB transaction
+        # before returning the response.
+        await db.commit()
         logging.info("创建 RAG 聊天会话: id=%d, title=%s", session_entity.id, session_entity.title)
 
         return SessionDTO(
@@ -151,6 +155,10 @@ class RagChatSessionService:
         if message_id is None:
             raise BusinessException(ErrorCode.NOT_FOUND, "会话不存在")
 
+        # Streaming responses keep the request dependency alive until the
+        # stream closes. Commit now so message history is not held uncommitted
+        # for the entire LLM request.
+        await db.commit()
         logging.info("准备流式消息: sessionId=%d, messageId=%d", session_id, message_id)
         return message_id
 
@@ -160,6 +168,7 @@ class RagChatSessionService:
         if not updated:
             raise BusinessException(ErrorCode.NOT_FOUND, "消息不存在")
 
+        await db.commit()
         logging.info("完成流式消息: messageId=%d, contentLength=%d", message_id, len(content))
 
     async def get_stream_answer(self, db: AsyncSession, session_id: int, question: str) -> AsyncGenerator[str, None]:
