@@ -106,10 +106,11 @@ class AppConfigProperties(BaseSettings):
     voice_evaluation_pending_stale_seconds: int = 120
     voice_evaluation_processing_stale_seconds: int = 600
 
-    # ElasticSearch
-    elasticsearch_url: str = "http://localhost:9200"
-    elasticsearch_index_name: str = "smart_service"
-    elasticsearch_query_mode: str = "dense_vector"
+    # Milvus
+    milvus_uri: str = "http://localhost:19530"
+    milvus_token: str | None = None
+    milvus_collection_name: str = "smart_service"
+    milvus_consistency_level: str = "Session"
 
     # Knowledge-base runtime tuning (model credentials live in the provider DB).
     kb_embedding_batch_size: int = 10

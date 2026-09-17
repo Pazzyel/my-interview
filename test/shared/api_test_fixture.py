@@ -47,8 +47,8 @@ def install_import_safety_stubs() -> None:
         config_stub.app_config = types.SimpleNamespace(
             max_file_size_bytes=10 * 1024 * 1024,
             allowed_types=["application/pdf"],
-            elasticsearch_url="http://localhost:9200",
-            elasticsearch_index_name="smart_service",
+            milvus_uri="http://localhost:19530",
+            milvus_collection_name="smart_service",
         )
         sys.modules["common.config"] = config_stub
 

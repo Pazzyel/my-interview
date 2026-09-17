@@ -18,7 +18,7 @@ docker compose ps
 - OpenAPI 文档：`http://localhost:8072/docs`
 - 健康检查：`http://localhost:8072/health`
 - RustFS 控制台：`http://localhost:9001`
-- Elasticsearch：`http://localhost:9200`
+- Milvus WebUI：`http://localhost:9091/webui/`
 
 Compose 会构建 `frontend/` 中的前端镜像。浏览器以同源方式访问 `/api` 和 `/ws`，前端 Nginx 在 Docker 网络内将请求转发到 `backend:8072`。本地运行 Vite 时，开发代理默认连接 `http://localhost:8072`，可通过 `VITE_API_PROXY_TARGET` 覆盖。
 
@@ -38,7 +38,10 @@ Linux/macOS 使用 `cp .env.example .env`。`.env` 已被 Git 忽略，请勿提
 | Frontend | Node.js 20 + Nginx | `frontend:80` | `http://localhost` |
 | Backend | Python 3.13 | - | `http://localhost:8072` |
 | MySQL | 8.4.10 | `mysql:3306` | `localhost:3308` |
-| Elasticsearch | 8.19.17 | `elasticsearch:9200` | `localhost:9200` |
+| Milvus Standalone | 2.6.23 | `milvus:19530` | `localhost:19530` |
+| Milvus WebUI | 2.6.23 | `milvus:9091` | `http://localhost:9091/webui/` |
+| Milvus etcd | 3.5.25 | `milvus-etcd:2379` | 不对外暴露 |
+| Milvus MinIO | 2024-12-18 | `milvus-minio:9000` | 不对外暴露 |
 | RocketMQ Proxy | 5.3.4 | `rocketmq-proxy:8081` | `localhost:8081` |
 | RocketMQ Broker | 5.3.4 | `rocketmq-broker:10911` | `localhost:10911` |
 | RocketMQ NameServer | 5.3.4 | `rocketmq-nameserver:9876` | `localhost:9876` |
@@ -48,7 +51,7 @@ RocketMQ Python 客户端为 `rocketmq-python-client==5.1.1`，它使用 RocketM
 
 全部服务都显式加入 `${COMPOSE_NETWORK_NAME:-interview-network}` bridge 网络。Broker 不再向 NameServer 注册 `127.0.0.1`，避免独立 Proxy 把 Broker 地址错误解析为自己的回环地址。
 
-Elasticsearch 以单节点开发模式运行并关闭了认证，仅适合本机或受信网络。RustFS 当前仍为 beta 版本；生产环境应评估多副本、TLS、备份和密钥管理。
+Milvus 以 standalone 开发模式运行，使用专用 etcd 和 MinIO 容器保存元数据与对象数据；三者数据均使用命名卷持久化。默认未开启认证，仅适合本机或受信网络。RustFS 当前仍为 beta 版本；生产环境应评估多副本、TLS、备份和密钥管理。
 
 基础设施端口默认只绑定 `127.0.0.1`，后端默认绑定 `0.0.0.0`。可分别通过 `INFRA_BIND_ADDRESS` 和 `BACKEND_BIND_ADDRESS` 调整。`rocketmq-permissions` 与 `rustfs-permissions` 是初始化命名卷权限的一次性容器，显示为 `Exited (0)` 属于正常状态。
 
@@ -71,7 +74,8 @@ Compose 已把基础设施地址配置为 Docker 网络内的服务名：
 | `DATABASE_URL` | `mysql+aiomysql://...@mysql:3306/interview` | 业务数据库 |
 | `DB_URI` | `mysql+aiomysql://...@mysql:3306/checkpointer` | LangGraph checkpoint 数据库 |
 | `ROCKETMQ_ENDPOINTS` | `rocketmq-proxy:8081` | RocketMQ 5.x Proxy gRPC 地址 |
-| `ELASTICSEARCH_URL` | `http://elasticsearch:9200` | 向量检索服务 |
+| `MILVUS_URI` | `http://milvus:19530` | 向量检索服务 |
+| `MILVUS_COLLECTION_NAME` | `smart_service` | 知识库向量 Collection |
 | `RUSTFS_ENDPOINT_URL` | `http://rustfs:9000` | S3-compatible 对象存储 |
 
 若后端不在 Compose 网络内运行，把这些值改为宿主机或远端服务的可达地址。MySQL 密码出现在 URI 中时必须进行 URL 编码。
@@ -106,6 +110,7 @@ LLM Provider 模块支持 OpenAI-compatible Chat Completions 和 Embeddings 服�
 
 - 生产代码的第三方直接 import 均有对应依赖；
 - `rocketmq-python-client==5.1.1` 与当前 RocketMQ 5.x API 用法一致；
+- `langchain-milvus==0.3.3` 与现有 `langchain-core 1.x` 兼容，并通过 `pymilvus 2.6.x` 连接 Milvus；
 - 测试使用 `sqlite+aiosqlite`，原清单漏了 `aiosqlite`，现已补充；
 - Docker 镜像额外安装 `libmagic1`，供 `python-magic` / `unstructured` 检测文件类型。
 
@@ -125,4 +130,4 @@ docker compose restart backend
 docker compose down
 ```
 
-生产部署前至少需要替换 MySQL/RustFS 密码、LLM 加密密钥和第三方 API Key，并为 Elasticsearch、RustFS、MySQL 与对外 API 配置认证、TLS、网络隔离和备份。
+生产部署前至少需要替换 MySQL/RustFS 密码、LLM 加密密钥和第三方 API Key，并为 Milvus、RustFS、MySQL 与对外 API 配置认证、TLS、网络隔离和备份。

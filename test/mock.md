@@ -77,23 +77,20 @@ Mock的对象应该尽可能少，尽可能底层
 
 ---
 
-## 4) ElasticSearch 向量库（vector_store）
+## 4) Milvus 向量库（vector_service）
 
-建议使用轻量内存数据库chromaDB，这个类只需要更换数据源
-
-当前的vector_store耦合度比较高，可能需要整体替换？
+单元测试时可通过 `VectorService` 协议注入 `AsyncMock`，不需要启动 Milvus。
 
 ### 建议 mock 的函数
-- `infrastructure.vector.vector_store.vector_store`（可整体替换成 AsyncMock 对象）
+- `infrastructure.vector.milvus_vector_service.MilvusVectorService`（可注入 fake store）
 
 ### 在知识库向量服务中的实际调用点
-- `modules.knowledgebase.service.knowledgebase_vector_service.vector_store.aadd_documents`
-- `modules.knowledgebase.service.knowledgebase_vector_service.vector_store.asimilarity_search_with_score`
-- `modules.knowledgebase.service.knowledgebase_vector_service.vector_store.client.delete_by_query`
+- `modules.knowledgebase.service.knowledgebase_vector_service.vector_service.add_documents`
+- `modules.knowledgebase.service.knowledgebase_vector_service.vector_service.similar_search`
+- `modules.knowledgebase.service.knowledgebase_vector_service.vector_service.delete_by_kb_id`
 
 ### 说明
-- `KnowledgeBaseVectorService` 文件里是 `from ... import vector_store`，
-	测试时优先 patch `knowledgebase_vector_service` 模块内的 `vector_store` 引用。
+- `KnowledgeBaseVectorService` 通过构造器接收 `VectorService`，测试时直接注入 mock 实现。
 
 ---
 

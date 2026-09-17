@@ -3,7 +3,7 @@ from common.config import app_config
 from infrastructure.file.file_hash_service import FileHashService
 from infrastructure.file.file_storage_service import FileStorageService
 from infrastructure.file.file_validation_service import FileValidationService
-from infrastructure.vector.elasticsearch_vector_service import ElasticsearchVectorService
+from infrastructure.vector.milvus_vector_service import MilvusVectorService
 from modules.interview.listener.evaluate_message_consumer import EvaluateMessageConsumer
 from modules.interview.listener.evaluate_message_producer import EvaluateMessageProducer
 from modules.interview.repository.interview_repository import InterviewRepository
@@ -159,7 +159,7 @@ knowledgebase_repository = KnowledgeBaseRepository()
 knowledgebase_question_repository = KnowledgeBaseQuestionRepository()
 rag_chat_repository = RagChatRepository()
 rag_chat_session_repository = RagChatSessionRepository()
-vector_service = ElasticsearchVectorService(registry=llm_provider_registry)
+vector_service = MilvusVectorService(registry=llm_provider_registry)
 knowledgebase_vector_service = KnowledgeBaseVectorService(vector_service)
 
 knowledgebase_parse_service = KnowledgeBaseParseService(document_parse_service, file_storage_service)

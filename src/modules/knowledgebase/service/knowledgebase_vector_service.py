@@ -34,7 +34,7 @@ class KnowledgeBaseVectorService:
 
     async def vectorize_and_store(self, kb_id: int, kb_name: str, kb_category: str, content: str) -> None:
         """
-        向量化知识库并存储到 Elasticsearch。
+        向量化知识库并存储到 Milvus。
         """
         logger.info("开始向量化知识库: kb_id=%s, content_length=%s", kb_id, len(content))
         try:

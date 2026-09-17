@@ -23,24 +23,70 @@ services:
     networks:
       - interview-network
 
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.17
+  milvus-etcd:
+    image: quay.io/coreos/etcd:v3.5.25
     restart: unless-stopped
     environment:
-      discovery.type: single-node
-      xpack.security.enabled: "false"
-      xpack.security.autoconfiguration.enabled: "false"
-      ES_JAVA_OPTS: -Xms512m -Xmx512m
-    ports:
-      - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${ELASTICSEARCH_PORT:-9200}:9200"
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    command: >-
+      etcd --advertise-client-urls=http://milvus-etcd:2379
+      --listen-client-urls=http://0.0.0.0:2379
+      --data-dir=/etcd
     volumes:
-      - elasticsearch-data:/usr/share/elasticsearch/data
+      - milvus-etcd-data:/etcd
     healthcheck:
-      test: ["CMD-SHELL", "curl --fail --silent 'http://127.0.0.1:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null"]
-      interval: 10s
-      timeout: 6s
-      retries: 18
-      start_period: 45s
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - interview-network
+
+  milvus-minio:
+    image: quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z
+    restart: unless-stopped
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    command: minio server /minio_data --console-address ":9001"
+    volumes:
+      - milvus-minio-data:/minio_data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - interview-network
+
+  milvus:
+    image: milvusdb/milvus:v2.6.23
+    restart: unless-stopped
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: milvus-etcd:2379
+      MINIO_ADDRESS: milvus-minio:9000
+    depends_on:
+      milvus-etcd:
+        condition: service_healthy
+      milvus-minio:
+        condition: service_healthy
+    ports:
+      - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${MILVUS_GRPC_PORT:-19530}:19530"
+      - "${INFRA_BIND_ADDRESS:-127.0.0.1}:${MILVUS_WEBUI_PORT:-9091}:9091"
+    volumes:
+      - milvus-data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 20s
+      retries: 5
+      start_period: 90s
     networks:
       - interview-network
 
@@ -185,8 +231,10 @@ services:
       RUSTFS_REGION_NAME: ${RUSTFS_REGION_NAME:-us-east-1}
       RUSTFS_BUCKET_NAME: ${RUSTFS_BUCKET_NAME:-resources}
       RUSTFS_KB_BUCKET_NAME: ${RUSTFS_KB_BUCKET_NAME:-knowledgebases}
-      ELASTICSEARCH_URL: http://elasticsearch:9200
-      ELASTICSEARCH_INDEX_NAME: ${ELASTICSEARCH_INDEX_NAME:-smart_service}
+      MILVUS_URI: http://milvus:19530
+      MILVUS_TOKEN: ${MILVUS_TOKEN:-}
+      MILVUS_COLLECTION_NAME: ${MILVUS_COLLECTION_NAME:-smart_service}
+      MILVUS_CONSISTENCY_LEVEL: ${MILVUS_CONSISTENCY_LEVEL:-Session}
       LLM_PROVIDER_ENCRYPTION_KEY: ${LLM_PROVIDER_ENCRYPTION_KEY:-local-compose-encryption-key-change-me}
       LLM_PROVIDER_BOOTSTRAP_JSON: >-
         {"default":{"baseUrl":"${LLM_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}","apiKey":"${LLM_API_KEY:-replace-me}","model":"${LLM_CHAT_MODEL:-qwen-plus}","embeddingModel":"${LLM_EMBEDDING_MODEL:-text-embedding-v4}","embeddingDimensions":${LLM_EMBEDDING_DIMENSIONS:-1024},"supportsEmbedding":true,"temperature":0,"enabled":true}}
@@ -199,7 +247,7 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
-      elasticsearch:
+      milvus:
         condition: service_healthy
       rocketmq-proxy:
         condition: service_healthy
@@ -226,7 +274,9 @@ services:
 
 volumes:
   mysql-data:
-  elasticsearch-data:
+  milvus-etcd-data:
+  milvus-minio-data:
+  milvus-data:
   rocketmq-nameserver-logs:
   rocketmq-broker-logs:
   rocketmq-broker-store:
