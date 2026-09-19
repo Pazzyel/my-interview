@@ -125,21 +125,42 @@ class KnowledgeBaseQueryService:
             }
         } if session_id is not None else None
         initial_state: KnowledgeQueryState = KnowledgeQueryState(origin_query=question, knowledgebase_ids=ids)
-        async for event in self.app.astream( # type: ignore
-                initial_state,
-                config=config,
-                stream_mode="updates"
+        streamed_answer = False
+        async for part in self.app.astream(  # type: ignore
+            initial_state,
+            config=config,
+            stream_mode=["messages", "updates"],
+            version="v2",
         ):
-            # LangGraph 事件结构通常为: {"node_name": {"field": "value"}}。
-            # 前端只接受答案文本，因此过滤掉中间状态并输出纯文本 data 帧。
-            response_texts = collect_response_text(event)
-            if len(response_texts) == 0:
+            if part["type"] == "messages":
+                message_chunk, metadata = part["data"]
+                # pre_retrieve 也会调用 LLM 重写查询，只向客户端转发最终回答节点的 token。
+                if metadata.get("langgraph_node") != "generate_answer":
+                    continue
+
+                content = message_chunk.text
+                if not content:
+                    continue
+
+                streamed_answer = True
+                # 保持现有纯文本 SSE 协议，并正确表达 token 内的换行。
+                # 字符是在每个上游 token 到达时立即发送，不再等待完整回答。
+                yield f"data:{content}\n\n"
                 continue
 
-            # 当前图节点返回完整答案；拆成字符片段以保持前端的渐进渲染。
+            if part["type"] != "updates":
+                continue
+
+            # no_result_response 等静态回答不会产生 LLM token，从状态更新中兜底输出。
+            # generate_answer 完成时还会返回完整 response，已流式输出时必须跳过以避免重复。
+            response_texts = collect_response_text(part["data"])
+            if len(response_texts) == 0 or streamed_answer:
+                continue
+
             response_text = max(response_texts, key=len)
-            for character in response_text:
-                yield f"data:{character}\n\n"
+            yield f"data:{response_text}\n\n"
+
+
     async def query_knowledge_base(self, db: AsyncSession, request: QueryRequest) -> QueryResponse:
         """根据知识库查询请求执行查询并构建响应"""
         answer: str = await self.answer_question(request.question, request.knowledge_base_ids)

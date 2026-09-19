@@ -103,4 +103,8 @@ async def send_message_stream(
     return StreamingResponse(
         rag_chat_session_service.send_message_stream(db, session_id, request.question),
         media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )

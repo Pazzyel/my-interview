@@ -208,5 +208,9 @@ async def query_knowledge_base_stream(
     logger.info("Request arrived: POST /api/knowledgebase/query/stream")
     return StreamingResponse(
         knowledgebase_query_service.answer_question_stream(request.question, request.knowledge_base_ids),
-        media_type="text/event-stream"
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
