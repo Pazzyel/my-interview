@@ -27,6 +27,8 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--embedding-provider", default="default")
         command.add_argument("--output-dir", default="evaluation/results")
         command.add_argument("--dataset", default=None)
+        if name == "evaluate":
+            command.add_argument("--limit", type=int, default=None)
     return parser
 
 
@@ -119,6 +121,11 @@ async def generate_dataset(args: argparse.Namespace) -> Path:
             testset_size=sample_count,
         )
         generated = testset.to_pandas().to_dict(orient="records")
+        if len(generated) < sample_count:
+            raise RuntimeError(
+                f"Ragas generated {len(generated)} samples, expected at least {sample_count}"
+            )
+        generated = generated[:sample_count]
         for index, generated_row in enumerate(generated, start=1):
             rows.append({
                 "case_id": f"kb{kb_id}-{index:04d}",
@@ -194,6 +201,11 @@ async def evaluate_dataset(args: argparse.Namespace, dataset_path: Path | None =
         for line in source_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
+    limit = getattr(args, "limit", None)
+    if limit is not None:
+        if limit <= 0:
+            raise ValueError("--limit must be greater than zero")
+        rows = rows[:limit]
     _validate_dataset(rows)
     await knowledgebase_query_service.build_graph(None)
 
@@ -224,7 +236,7 @@ async def evaluate_dataset(args: argparse.Namespace, dataset_path: Path | None =
             Faithfulness(),
             ResponseRelevancy(),
             LLMContextPrecisionWithReference(),
-            LLMContextRecall(),
+            LLMContextRecall(), # NonLLMContextRecall()
             FactualCorrectness(),
         ],
         llm=LangchainLLMWrapper(evaluator_model),
@@ -237,14 +249,17 @@ async def evaluate_dataset(args: argparse.Namespace, dataset_path: Path | None =
     frame.insert(0, "case_id", [row["case_id"] for row in rows])
     frame.insert(1, "trace_id", trace_ids)
     metric_columns = [column for column in frame.columns if pd.api.types.is_numeric_dtype(frame[column])]
-    if frame[metric_columns].isna().any().any():
-        raise RuntimeError("Ragas returned NaN for one or more metrics")
+    has_nan = frame[metric_columns].isna().any().any()
 
     csv_path = output_dir / "evaluation-results.csv"
     json_path = output_dir / "evaluation-results.json"
     summary_path = output_dir / "evaluation-summary.json"
     frame.to_csv(csv_path, index=False, encoding="utf-8-sig")
     frame.to_json(json_path, orient="records", force_ascii=False, indent=2)
+    average_scores: dict[str, float | None] = {}
+    for column in metric_columns:
+        average = frame[column].mean()
+        average_scores[column] = None if pd.isna(average) else float(average)
     summary = {
         "evaluated_at": datetime.now().isoformat(),
         "ragas_version": _ragas_version(),
@@ -252,9 +267,12 @@ async def evaluate_dataset(args: argparse.Namespace, dataset_path: Path | None =
         "dataset": str(source_path),
         "evaluator_provider": args.evaluator_provider,
         "embedding_provider": args.embedding_provider,
-        "scores": {column: float(frame[column].mean()) for column in metric_columns},
+        "scores": average_scores,
+        "has_nan": bool(has_nan),
     }
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    if has_nan:
+        raise RuntimeError("Ragas returned NaN for one or more metrics")
     return summary_path
 
 

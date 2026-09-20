@@ -255,6 +255,8 @@ services:
         condition: service_started
     ports:
       - "${BACKEND_BIND_ADDRESS:-0.0.0.0}:${BACKEND_PORT:-8072}:8072"
+    volumes:
+      - ./evaluation/results:/app/evaluation/results
     stop_grace_period: 30s
     networks:
       - interview-network

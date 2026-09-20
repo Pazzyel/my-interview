@@ -14,14 +14,15 @@ RUN apt-get update \
         libreoffice-writer \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt ./requirements.txt
+COPY requirements.txt requirements-eval.txt ./
 RUN python -m pip install --upgrade pip \
-    && python -m pip install --requirement requirements.txt \
+    && python -m pip install --requirement requirements-eval.txt \
     && python -m nltk.downloader -d "$NLTK_DATA" \
         punkt_tab averaged_perceptron_tagger_eng
 
 COPY resources ./resources
 COPY src ./src
+COPY evaluation ./evaluation
 
 RUN addgroup --system app \
     && adduser --system --ingroup app --home /app app \
