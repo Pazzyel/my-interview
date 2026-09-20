@@ -1,35 +1,24 @@
 import logging
 from typing import List
 
-import tiktoken
 from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from common.config import app_config
 from common.exceptions import BusinessException, ErrorCode
+from infrastructure.vector.scored_document import ScoredDocument
 from infrastructure.vector.vector_service import VectorService
+from modules.knowledgebase.service.knowledgebase_chunking_service import KnowledgeBaseChunkingService
 
 logger = logging.getLogger(__name__)
 
-tokenizer = tiktoken.get_encoding(app_config.tokenizer_name)
-
-def token_length_function(content: str) -> int:
-    """
-    返回文本计算的token长度
-    """
-    return len(tokenizer.encode(content))
-
-
-
 class KnowledgeBaseVectorService:
-    def __init__(self, vector_service: VectorService):
+    def __init__(
+        self,
+        vector_service: VectorService,
+        chunking_service: KnowledgeBaseChunkingService | None = None,
+    ):
         self.vector_service: VectorService = vector_service
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=500,           # 每个块 500 Tokens
-            chunk_overlap=50,         # 重叠 50 Tokens
-            length_function=token_length_function, # 核心：按 Token 计长
-            separators=["\n\n", "\n", "。", "！", "？", "；", " ", ""] # 针对中文优化
-        )
+        self.chunking_service = chunking_service or KnowledgeBaseChunkingService()
 
 
     async def vectorize_and_store(self, kb_id: int, kb_name: str, kb_category: str, content: str) -> None:
@@ -42,13 +31,7 @@ class KnowledgeBaseVectorService:
             await self.delete_knowledgebase_by_id(kb_id)
 
             # 2. 文本分块，添加元数据
-            documents: List[Document] = self.text_splitter.create_documents([content])
-            for document in documents:
-                document.metadata = {
-                    "kb_id": str(kb_id),  # 统一使用 String 类型存储，确保查询一致性
-                    "source": kb_name,  # 溯源显示
-                    "category": kb_category or "general",  # 用于搜索过滤
-                }
+            documents = self.chunking_service.split(content, kb_id, kb_name, kb_category)
 
             logger.info("文本分块完成: %s 个 chunks", len(documents))
 
@@ -108,6 +91,26 @@ class KnowledgeBaseVectorService:
         except Exception as e:
             logger.error("向量搜索失败: %s", str(e))
             raise BusinessException(ErrorCode.KB_VECTORIZE_ERROR, "向量搜索失败", str(e))
+
+    async def similar_search_with_scores(
+        self,
+        query: str,
+        knowledgebase_ids: list[int],
+        top_k: int,
+        min_score: float,
+    ) -> list[ScoredDocument]:
+        try:
+            return await self.vector_service.similar_search_with_scores(
+                query=query,
+                knowledgebase_ids=knowledgebase_ids,
+                top_k=top_k,
+                min_score=min_score,
+            )
+        except Exception as error:
+            logger.error("向量搜索失败: %s", error)
+            raise BusinessException(
+                ErrorCode.KB_VECTORIZE_ERROR, "向量搜索失败", str(error)
+            ) from error
 
     async def delete_knowledgebase_by_id(self, knowledgebase_id: int) -> None:
         """

@@ -34,6 +34,7 @@ from modules.knowledgebase.repository.knowledgebase_repository import KnowledgeB
 from modules.knowledgebase.repository.knowledgebase_question_repository import KnowledgeBaseQuestionRepository
 from modules.knowledgebase.repository.rag_chat_repository import RagChatRepository
 from modules.knowledgebase.repository.rag_chat_session_repository import RagChatSessionRepository
+from modules.knowledgebase.repository.rag_trace_repository import RagTraceRepository
 from modules.knowledgebase.service.knowledgebase_count_service import KnowledgeBaseCountService
 from modules.knowledgebase.service.knowledgebase_delete_service import KnowledgeBaseDeleteService
 from modules.knowledgebase.service.knowledgebase_list_service import KnowledgeBaseListService
@@ -45,6 +46,7 @@ from modules.knowledgebase.service.knowledgebase_vector_service import Knowledge
 from modules.knowledgebase.service.knowledgebase_vectorize_consumer_service import \
     KnowledgeBaseVectorizeConsumerService
 from modules.knowledgebase.service.rag_chat_session_service import RagChatSessionService
+from modules.knowledgebase.service.rag_trace_recorder import RagTraceRecorder
 from modules.knowledgebase.service.knowledgebase_interview_service import KnowledgeBaseInterviewService
 from modules.knowledgebase.service.knowledgebase_question_generation_service import KnowledgeBaseQuestionGenerationService
 from modules.knowledgebase.service.knowledgebase_question_service import KnowledgeBaseQuestionService
@@ -188,6 +190,8 @@ knowledgebase_list_service = KnowledgeBaseListService(
     knowledgebase_repository, rag_chat_repository, file_storage_service
 )
 knowledgebase_count_service = KnowledgeBaseCountService(knowledgebase_repository)
+rag_trace_repository = RagTraceRepository()
+rag_trace_recorder = RagTraceRecorder(rag_trace_repository)
 knowledgebase_delete_service = KnowledgeBaseDeleteService(
     knowledgebase_repository, rag_chat_repository, knowledgebase_vector_service, file_storage_service
 )
@@ -196,6 +200,7 @@ knowledgebase_query_service = KnowledgeBaseQueryService(
     knowledgebase_vector_service,
     knowledgebase_count_service,
     llm_provider_registry,
+    rag_trace_recorder,
 )
 rag_chat_session_service = RagChatSessionService(rag_chat_session_repository, knowledgebase_query_service)
 

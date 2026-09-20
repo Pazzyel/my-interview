@@ -37,6 +37,7 @@ def _install_interview_service_stubs() -> None:
     if "infrastructure.prompt.prompt_service" not in sys.modules:
         prompt_stub = types.ModuleType("infrastructure.prompt.prompt_service")
         prompt_stub.load_prompt = AsyncMock(return_value="mock prompt template")
+        prompt_stub.get_prompt_hash = AsyncMock(return_value="test-prompt-hash")
         prompt_stub.has_short_memory = MagicMock(return_value=False)
         prompt_stub.Role = types.SimpleNamespace(
             USER=types.SimpleNamespace(value="user"),

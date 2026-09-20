@@ -49,6 +49,14 @@ def install_import_safety_stubs() -> None:
             allowed_types=["application/pdf"],
             milvus_uri="http://localhost:19530",
             milvus_collection_name="smart_service",
+            tokenizer_name="cl100k_base",
+            kb_short_query_length=10,
+            kb_mid_query_length=50,
+            kb_top_k_short=5,
+            kb_top_k_medium=10,
+            kb_top_k_long=20,
+            kb_min_score_short=0.5,
+            kb_min_score_default=0.3,
         )
         sys.modules["common.config"] = config_stub
 

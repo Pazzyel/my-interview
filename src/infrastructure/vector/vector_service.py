@@ -3,6 +3,8 @@ from typing import Any, Protocol, runtime_checkable
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 
+from infrastructure.vector.scored_document import ScoredDocument
+
 
 @runtime_checkable
 class VectorService(Protocol):
@@ -23,6 +25,14 @@ class VectorService(Protocol):
         top_k: int,
         min_score: float,
     ) -> list[Document]: ...
+
+    async def similar_search_with_scores(
+        self,
+        query: str,
+        knowledgebase_ids: list[int],
+        top_k: int,
+        min_score: float,
+    ) -> list[ScoredDocument]: ...
 
     async def similar_search_rrf(
         self,

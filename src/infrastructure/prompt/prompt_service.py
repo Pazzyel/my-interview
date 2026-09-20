@@ -1,3 +1,4 @@
+import hashlib
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List
@@ -10,7 +11,8 @@ from langchain_core.runnables import RunnableConfig
 
 current_dir = Path(__file__).parent
 root_dir = current_dir.parents[2]
-prompt_cache: Dict[str, ChatPromptTemplate] = {} # 全局prompt缓存
+prompt_cache: Dict[tuple[str, bool], ChatPromptTemplate] = {} # 全局prompt缓存
+prompt_hash_cache: Dict[str, str] = {}
 
 class Role(Enum):
     SYSTEM = "system"
@@ -24,12 +26,14 @@ async def load_prompt(node_name: str, with_short_memory: bool = False) -> ChatPr
     从resources/prompts/{node_name}.yaml加载
     """
     # 有缓存就加载缓存
-    if node_name in prompt_cache:
-        return prompt_cache[node_name]
+    cache_key = (node_name, with_short_memory)
+    if cache_key in prompt_cache:
+        return prompt_cache[cache_key]
 
     prompt_path: Path = root_dir / "resources" / "prompts" / f"{node_name}.yaml"
     async with aiofile.async_open(prompt_path, "r", encoding="utf-8") as f:
         content = await f.read()
+    prompt_hash_cache[node_name] = hashlib.sha256(content.encode("utf-8")).hexdigest()
     config = yaml.safe_load(content)
 
     # 动态构建prompt
@@ -46,8 +50,14 @@ async def load_prompt(node_name: str, with_short_memory: bool = False) -> ChatPr
         messages.append((Role.USER.value, node_config[Role.USER.value]))
 
     prompt = ChatPromptTemplate.from_messages(messages)
-    prompt_cache[node_name] = prompt
+    prompt_cache[cache_key] = prompt
     return prompt
+
+
+async def get_prompt_hash(node_name: str) -> str:
+    if node_name not in prompt_hash_cache:
+        await load_prompt(node_name)
+    return prompt_hash_cache[node_name]
 
 def has_short_memory(config: RunnableConfig) -> bool:
     return config.get("configurable") is not None and config.get("configurable").get("thread_id") is not None

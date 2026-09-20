@@ -105,6 +105,23 @@ def test_similar_search_applies_native_filter_and_threshold():
     )
 
 
+def test_similar_search_with_scores_preserves_original_rank():
+    store = FakeStore()
+    store.asimilarity_search_with_score.return_value = [
+        (Document(page_content="first"), 0.95),
+        (Document(page_content="filtered"), 0.10),
+        (Document(page_content="third"), 0.80),
+    ]
+    service = MilvusVectorService(store=store)
+
+    result = run(service.similar_search_with_scores("query", [1], 3, 0.5))
+
+    assert [(item.document.page_content, item.score, item.rank) for item in result] == [
+        ("first", 0.95, 1),
+        ("third", 0.80, 3),
+    ]
+
+
 def test_similar_search_without_kb_ids_omits_filter_expression():
     store = FakeStore()
     service = MilvusVectorService(store=store)

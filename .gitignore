@@ -3,3 +3,4 @@
 .pytest-tmp*/
 **/__pycache__/
 *.py[cod]
+evaluation/results/

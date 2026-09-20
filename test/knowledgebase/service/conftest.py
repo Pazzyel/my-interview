@@ -43,6 +43,14 @@ def _install_knowledgebase_service_stubs() -> None:
             top_k_long=20,
             min_score_short=0.5,
             min_score_default=0.3,
+            tokenizer_name="cl100k_base",
+            kb_short_query_length=10,
+            kb_mid_query_length=50,
+            kb_top_k_short=5,
+            kb_top_k_medium=10,
+            kb_top_k_long=20,
+            kb_min_score_short=0.5,
+            kb_min_score_default=0.3,
         )
         sys.modules["common.ai_config"] = ai_stub
 
@@ -54,6 +62,7 @@ def _install_knowledgebase_service_stubs() -> None:
     if "infrastructure.prompt.prompt_service" not in sys.modules:
         prompt_stub = types.ModuleType("infrastructure.prompt.prompt_service")
         prompt_stub.load_prompt = AsyncMock()
+        prompt_stub.get_prompt_hash = AsyncMock(return_value="test-prompt-hash")
         prompt_stub.has_short_memory = MagicMock(return_value=False)
         prompt_stub.Role = types.SimpleNamespace(
             USER=types.SimpleNamespace(value="user"),
@@ -113,6 +122,8 @@ def _install_knowledgebase_service_stubs() -> None:
             async def vectorize_and_store(self, kb_id, kb_name, kb_category, content):
                 pass
             async def similar_search(self, query, knowledgebase_ids, top_k, min_score):
+                return []
+            async def similar_search_with_scores(self, query, knowledgebase_ids, top_k, min_score):
                 return []
 
         vs_module_stub.KnowledgeBaseVectorService = _StubKnowledgeBaseVectorService

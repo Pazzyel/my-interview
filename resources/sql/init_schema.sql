@@ -329,3 +329,38 @@ CREATE TABLE IF NOT EXISTS `rag_session_knowledge_bases` (
   FOREIGN KEY (`knowledge_base_id`) REFERENCES `knowledge_bases` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS `rag_trace_runs` (
+  `trace_id` CHAR(36) NOT NULL,
+  `session_id` BIGINT NULL,
+  `run_mode` VARCHAR(16) NOT NULL,
+  `knowledge_base_ids_json` TEXT NOT NULL,
+  `original_query` TEXT NOT NULL,
+  `selected_query` TEXT NULL,
+  `response` TEXT NULL,
+  `pipeline_version` VARCHAR(32) NOT NULL,
+  `status` VARCHAR(20) NOT NULL,
+  `started_at` DATETIME(6) NOT NULL,
+  `completed_at` DATETIME(6) NULL,
+  `total_latency_ms` DOUBLE NULL,
+  `error_stage` VARCHAR(64) NULL,
+  `error_message` TEXT NULL,
+  PRIMARY KEY (`trace_id`),
+  KEY `ix_rag_trace_runs_session_id` (`session_id`),
+  KEY `ix_rag_trace_runs_status` (`status`),
+  KEY `ix_rag_trace_runs_started_at` (`started_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `rag_trace_events` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `trace_id` CHAR(36) NOT NULL,
+  `event_type` VARCHAR(64) NOT NULL,
+  `node_name` VARCHAR(64) NULL,
+  `payload_json` LONGTEXT NOT NULL,
+  `occurred_at` DATETIME(6) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `ix_rag_trace_events_trace_id` (`trace_id`),
+  KEY `ix_rag_trace_events_event_type` (`event_type`),
+  KEY `ix_rag_trace_events_occurred_at` (`occurred_at`),
+  CONSTRAINT `fk_rag_trace_events_trace_id` FOREIGN KEY (`trace_id`) REFERENCES `rag_trace_runs` (`trace_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

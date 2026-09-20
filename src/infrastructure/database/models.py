@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Table, Boolean, Float, Index, UniqueConstraint
+from sqlalchemy import BigInteger, Column, Integer, String, Text, DateTime, ForeignKey, Enum as SQLEnum, Table, Boolean, Float, Index, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from common.models import AsyncTaskStatus
@@ -461,3 +461,51 @@ class RagChatMessageORM(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
     completed: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class RagTraceRunORM(Base):
+    __tablename__ = "rag_trace_runs"
+    __table_args__ = (
+        Index("ix_rag_trace_runs_session_id", "session_id"),
+        Index("ix_rag_trace_runs_status", "status"),
+        Index("ix_rag_trace_runs_started_at", "started_at"),
+    )
+
+    trace_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    run_mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    knowledge_base_ids_json: Mapped[str] = mapped_column(Text, nullable=False)
+    original_query: Mapped[str] = mapped_column(Text, nullable=False)
+    selected_query: Mapped[str | None] = mapped_column(Text, nullable=True)
+    response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pipeline_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    total_latency_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    error_stage: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class RagTraceEventORM(Base):
+    __tablename__ = "rag_trace_events"
+    __table_args__ = (
+        Index("ix_rag_trace_events_trace_id", "trace_id"),
+        Index("ix_rag_trace_events_event_type", "event_type"),
+        Index("ix_rag_trace_events_occurred_at", "occurred_at"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    trace_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("rag_trace_runs.trace_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    node_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

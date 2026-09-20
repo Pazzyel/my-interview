@@ -120,6 +120,26 @@ LLM Provider 模块支持 OpenAI-compatible Chat Completions 和 Embeddings 服�
 python -m pytest -q --basetemp=.pytest-tmp -p no:cacheprovider
 ```
 
+## RAG Trace 与 Ragas 评测
+
+知识库问答会将查询改写、检索结果、模型调用和最终回答写入 `rag_trace_runs` 与 `rag_trace_events`。新表仅会在空 MySQL 数据目录初始化时自动创建；已有开发数据卷请先备份，再按“数据库初始化”一节重建。不要在未备份时执行 `docker compose down -v`。
+
+安装离线评测依赖：
+
+```bash
+pip install -r requirements-eval.txt
+```
+
+生成数据集、评测现有数据集，或一次完成两步：
+
+```bash
+python -m evaluation.ragas_cli generate --kb-ids 1,2 --size 50
+python -m evaluation.ragas_cli evaluate --dataset evaluation/results/dataset.jsonl
+python -m evaluation.ragas_cli run --kb-ids 1,2 --size 50
+```
+
+评测使用数据库中的 LLM Provider 配置，不增加知识库问答计数，也不写入会话消息或 LangGraph Checkpoint。新增 `chunk_id` 后，需要对参与评测的知识库重新向量化。输出默认写入 `evaluation/results/`，该目录不纳入 Git。
+
 ## 常用运维命令
 
 ```bash

@@ -7,6 +7,7 @@ from langchain_milvus import BM25BuiltInFunction, Milvus
 
 from common.config import app_config
 from common.llm_provider import LlmProviderRegistry
+from infrastructure.vector.scored_document import ScoredDocument
 
 _DENSE_VECTOR_FIELD = "vector"
 _SPARSE_VECTOR_FIELD = "sparse"
@@ -119,6 +120,18 @@ class MilvusVectorService:
         top_k: int,
         min_score: float,
     ) -> list[Document]:
+        scored = await self.similar_search_with_scores(
+            query, knowledgebase_ids, top_k, min_score
+        )
+        return [item.document for item in scored]
+
+    async def similar_search_with_scores(
+        self,
+        query: str,
+        knowledgebase_ids: list[int],
+        top_k: int,
+        min_score: float,
+    ) -> list[ScoredDocument]:
         if top_k <= 0:
             return []
 
@@ -130,7 +143,11 @@ class MilvusVectorService:
             ranker_type="weighted",
             ranker_params={"weights": _DENSE_ONLY_WEIGHTS},
         )
-        return [document for document, score in results if score >= min_score]
+        return [
+            ScoredDocument(document=document, score=float(score), rank=index + 1)
+            for index, (document, score) in enumerate(results)
+            if score >= min_score
+        ]
 
     async def similar_search_rrf(
         self,
